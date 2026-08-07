@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#06111f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <title>Матрица ТОП-3</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css?v=1.0.0" />
+</head>
+<body>
+  <div id="splash" class="splash">
+    <img src="matrix-logo.png" alt="Matrix TOP-3" />
+    <div class="splash-title">МАТРИЦА ТОП-3</div>
+    <div class="splash-sub">MATRIX TOP-3</div>
+  </div>
+
+  <main id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <img class="brand-logo" src="matrix-logo.png" alt="" />
+        <div>
+          <h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1>
+          <div class="version">отдельное приложение · v1.0.0</div>
+          <div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div>
+        </div>
+      </div>
+      <button id="refreshBtn" class="icon-btn" title="Обновить">↻</button>
+    </header>
+
+    <nav class="tabs" aria-label="Разделы">
+      <button class="tab active" data-tab="matrix">Матрица ТОП-3</button>
+      <button class="tab" data-tab="horizontal">Горизонталь ТОП-3</button>
+      <button class="tab" data-tab="ai">🧠 ИИ анализ</button>
+    </nav>
+
+    <section class="controls card">
+      <div class="control-group">
+        <label>Показать дней</label>
+        <div id="dayButtons" class="segmented small">
+          <button data-days="7">7</button><button class="active" data-days="14">14</button><button data-days="30">30</button><button data-days="60">60</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <label>Строк на экране</label>
+        <select id="rowLimit"><option>20</option><option selected>50</option><option>100</option><option>200</option></select>
+      </div>
+      <div class="control-group grow">
+        <label>Активные цифры</label>
+        <div id="topDigitButtons" class="digit-strip"></div>
+      </div>
+      <button id="resetBtn" class="reset-btn">Сброс</button>
+    </section>
+
+    <section id="matrixView" class="view active">
+      <section class="card matrix-card">
+        <div class="section-title-row">
+          <div>
+            <h2>МАТРИЦА ТОП-3</h2>
+            <p>дата / день → время → № тиража → A B C</p>
+          </div>
+          <div id="positionMode" class="segmented mode">
+            <button data-mode="A">A</button><button data-mode="B">B</button><button data-mode="C">C</button><button class="active" data-mode="ALL">ВСЕ</button>
+          </div>
+        </div>
+        <div class="legend">
+          <span><i class="l low"></i>низкая</span><span><i class="l mid"></i>средняя</span><span><i class="l high"></i>высокая</span><span><i class="l hot"></i>очень высокая</span>
+        </div>
+        <div id="matrixScroll" class="matrix-scroll"><div id="matrixTable"></div></div>
+      </section>
+
+      <section class="bottom-grid">
+        <div class="card active-card">
+          <h3>Активные цифры</h3>
+          <div id="activeDigitButtons" class="active-digit-grid"></div>
+          <div id="selectedCount" class="muted">Выбрано: 0 / 10</div>
+        </div>
+        <div class="card stats-card">
+          <h3>Частота выпадений</h3>
+          <div id="frequencyBars" class="bars"></div>
+        </div>
+        <div class="card status-card">
+          <h3>Статус матрицы</h3>
+          <div id="matrixStatus"></div>
+        </div>
+      </section>
+    </section>
+
+    <section id="horizontalView" class="view">
+      <section class="card">
+        <div class="section-title-row"><div><h2>ГОРИЗОНТАЛЬ ТОП-3</h2><p>каждая цифра — отдельная кнопка</p></div></div>
+        <div class="horizontal-wrap">
+          <table class="horizontal-table">
+            <thead><tr><th>№</th><th>Дата / день</th><th>Время</th><th>Комбинация</th></tr></thead>
+            <tbody id="horizontalBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <section id="aiView" class="view">
+      <section class="card ai-card">
+        <div class="section-title-row"><div><h2>🧠 ИИ АНАЛИЗ</h2><p>статистический анализ текущего окна матрицы</p></div></div>
+        <div id="aiSummary" class="ai-grid"></div>
+      </section>
+    </section>
+
+    <footer class="footerbar">
+      <button class="foot active" data-tab="matrix">▦<span>Матрица</span></button>
+      <button class="foot" data-tab="horizontal">▤<span>Горизонталь</span></button>
+      <button class="foot" data-tab="ai">🧠<span>ИИ</span></button>
+    </footer>
+  </main>
+
+  <script src="top3-data.js?v=1"></script>
+  <script src="app.js?v=1.0.0"></script>
+</body>
+</html>
