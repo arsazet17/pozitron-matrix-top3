@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import crypto from 'node:crypto';
 import { chromium } from 'playwright';
 
-const URL = 'https://www.stoloto.ru/top3/archive';
-const REPORT = new URL('./stoloto-download-test-report.json', import.meta.url);
+const ARCHIVE_URL = 'https://www.stoloto.ru/top3/archive';
+const REPORT = new globalThis.URL('./stoloto-download-test-report.json', import.meta.url);
 
 function sha256(buf) {
   return crypto.createHash('sha256').update(buf).digest('hex');
@@ -54,7 +54,7 @@ async function onePass(browser, pass) {
   });
 
   try {
-    await page.goto(`${URL}?download_test=${Date.now()}_${pass}`, {
+    await page.goto(`${ARCHIVE_URL}?download_test=${Date.now()}_${pass}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60000
     });
@@ -145,7 +145,7 @@ async function main() {
   const browser = await chromium.launch({ headless: true });
   const report = {
     testedAt: new Date().toISOString(),
-    source: URL,
+    source: ARCHIVE_URL,
     mode: 'TEST ONLY — официальный "Скачать архив"; top3-live.json НЕ изменяется',
     passes: [],
     consensus: false,
@@ -190,7 +190,7 @@ async function main() {
 main().catch(async e => {
   await fs.writeFile(REPORT, JSON.stringify({
     testedAt: new Date().toISOString(),
-    source: URL,
+    source: ARCHIVE_URL,
     status: 'FAIL',
     fatalError: e.message
   }, null, 2) + '\n', 'utf8');
