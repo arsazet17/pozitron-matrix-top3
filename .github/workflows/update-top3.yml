@@ -2,67 +2,12 @@ name: Update TOP-3 data
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'update-top3-stoloto-browser.mjs'
-      - '.github/workflows/update-top3.yml'
-  schedule:
-    - cron: '3,13,23,33,43,53 * * * *'
 
 permissions:
   contents: write
 
-concurrency:
-  group: top3-live-update
-  cancel-in-progress: false
-
 jobs:
-  update:
+  paused:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Install Playwright Chromium
-        shell: bash
-        run: |
-          npm install --no-save playwright@1.54.2
-          npx playwright install --with-deps chromium
-
-      - name: Read official Stoloto archive in browser
-        shell: bash
-        run: node update-top3-stoloto-browser.mjs
-
-      - name: Validate top3-live.json
-        shell: bash
-        run: |
-          node -e "
-            const fs=require('fs');
-            const j=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
-            if (!Array.isArray(j.draws) || !j.draws.length) throw new Error('draws пуст');
-            if (!Number.isInteger(Number(j.latest))) throw new Error('latest отсутствует');
-            if (!String(j.source || '').includes('Столото')) throw new Error('источник не Столото');
-            console.log('latest:',j.latest,'source:',j.source,'updatedAt:',j.updatedAt);
-          "
-
-      - name: Commit updated data
-        shell: bash
-        run: |
-          if git diff --quiet -- top3-live.json; then
-            echo "Новых результатов нет"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add top3-live.json
-          git commit -m "Update TOP-3 from official Stoloto browser parser"
-          git push
+      - run: echo "Автообновление временно отключено. Не запускать до установки проверенного парсера Столото."
