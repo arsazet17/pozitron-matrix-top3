@@ -2,8 +2,13 @@ name: Update TOP-3 data
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'update-top3-stoloto.mjs'
+      - '.github/workflows/update-top3.yml'
   schedule:
-    # Смещено от круглых минут: GitHub чаще задерживает задания около :00.
     - cron: '3,13,23,33,43,53 * * * *'
 
 permissions:
@@ -16,7 +21,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
@@ -27,47 +32,46 @@ jobs:
         with:
           node-version: 22
 
-      - name: Update TOP-3 with retries
+      - name: Update TOP-3 from official Stoloto
         shell: bash
         run: |
           set -e
           for attempt in 1 2 3; do
-            echo "Попытка $attempt из 3"
-            if node update-top3.mjs; then
-              echo "Обновление выполнено"
+            echo "Столото: попытка $attempt из 3"
+            if node update-top3-stoloto.mjs; then
               break
             fi
 
             if [ "$attempt" -eq 3 ]; then
-              echo "Все 3 попытки завершились ошибкой"
+              echo "Столото: все попытки завершились ошибкой"
               exit 1
             fi
 
-            echo "Ждём 45 секунд и повторяем..."
             sleep 45
           done
 
-      - name: Validate live file
+      - name: Validate top3-live.json
         shell: bash
         run: |
           node -e "
             const fs=require('fs');
             const j=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
-            if (!Array.isArray(j.draws) || !j.draws.length) throw new Error('top3-live.json пуст');
+            if (!Array.isArray(j.draws) || !j.draws.length) throw new Error('draws пуст');
             if (!Number.isInteger(Number(j.latest))) throw new Error('latest отсутствует');
-            console.log('latest:', j.latest, 'draws:', j.draws.length, 'updatedAt:', j.updatedAt);
+            if (!String(j.source || '').includes('Столото')) throw new Error('источник не Столото');
+            console.log('latest:',j.latest,'source:',j.source,'updatedAt:',j.updatedAt);
           "
 
-      - name: Commit updated live data
+      - name: Commit updated data
         shell: bash
         run: |
           if git diff --quiet -- top3-live.json; then
-            echo "Изменений в top3-live.json нет"
+            echo "Новых результатов нет"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add top3-live.json
-          git commit -m "Update TOP-3 live data"
+          git commit -m "Update TOP-3 from official Stoloto"
           git push
