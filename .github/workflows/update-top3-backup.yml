@@ -26,22 +26,15 @@ jobs:
         with:
           node-version: 22
 
-      - name: Backup update from official Stoloto
+      - name: Install Playwright Chromium
         shell: bash
         run: |
-          set -e
-          for attempt in 1 2 3; do
-            echo "Резерв Столото: попытка $attempt из 3"
-            if node update-top3-stoloto.mjs; then
-              break
-            fi
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
 
-            if [ "$attempt" -eq 3 ]; then
-              exit 1
-            fi
-
-            sleep 45
-          done
+      - name: Read official Stoloto archive in browser
+        shell: bash
+        run: node update-top3-stoloto-browser.mjs
 
       - name: Commit updated data
         shell: bash
@@ -50,9 +43,8 @@ jobs:
             echo "Изменений нет"
             exit 0
           fi
-
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add top3-live.json
-          git commit -m "Update TOP-3 from official Stoloto (backup)"
+          git commit -m "Update TOP-3 from Stoloto browser parser (backup)"
           git push
