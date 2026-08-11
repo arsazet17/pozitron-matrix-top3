@@ -1,24 +1,24 @@
 {
-  "testedAt": "2026-08-11T01:36:38.183Z",
-  "mode": "TEST ONLY — Lucky Numbers с авторизацией; top3-live.json НЕ изменяется",
+  "testedAt": "2026-08-11T01:51:21.902Z",
+  "mode": "TEST ONLY — реальная форма Lucky Numbers + авторизация; top3-live.json НЕ изменяется",
   "passes": [
     {
       "pass": 1,
       "ok": false,
-      "error": "не найдены поля входа Lucky Numbers"
+      "error": "на главной странице не найден пункт \"Вход\""
     },
     {
       "pass": 2,
       "ok": false,
-      "error": "не найдены поля входа Lucky Numbers"
+      "error": "на главной странице не найден пункт \"Вход\""
     },
     {
       "pass": 3,
       "ok": false,
-      "error": "не найдены поля входа Lucky Numbers"
+      "error": "на главной странице не найден пункт \"Вход\""
     }
   ],
   "consensus": false,
   "status": "FAIL",
-  "reason": "не все три прохода подтвердили контрольные тиражи"
+  "reason": "не все три прохода подтвердили авторизацию и контрольные тиражи"
 }
