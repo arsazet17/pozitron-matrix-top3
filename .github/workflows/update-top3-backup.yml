@@ -2,12 +2,47 @@ name: TOP-3 backup updater
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '7,17,27,37,47,57 * * * *'
 
 permissions:
   contents: write
 
+concurrency:
+  group: top3-stoloto-oauth
+  cancel-in-progress: false
+
 jobs:
-  paused:
+  update:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+
     steps:
-      - run: echo "Резервное автообновление временно отключено. Не запускать до установки проверенного парсера Столото."
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Chromium
+        run: |
+          npm install --no-save playwright@1.54.2
+          npx playwright install --with-deps chromium
+
+      - name: Backup update from official Stoloto
+        env:
+          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
+          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
+        run: node update-top3-stoloto-oauth.mjs
+
+      - name: Commit verified live data
+        run: |
+          if git diff --quiet -- top3-live.json; then
+            echo "Нет новых подтверждённых тиражей"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add top3-live.json
+          git commit -m "Update TOP-3 from verified Stoloto OAuth (backup)"
+          git push
