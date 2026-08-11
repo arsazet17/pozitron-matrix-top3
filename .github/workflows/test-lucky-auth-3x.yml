@@ -10,21 +10,26 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - name: Install Chromium
         run: |
           npm install --no-save playwright@1.54.2
           npx playwright install --with-deps chromium
+
       - name: Test Lucky authenticated three times
         env:
           LUCKY_EMAIL: ${{ secrets.LUCKY_EMAIL }}
           LUCKY_PASSWORD: ${{ secrets.LUCKY_PASSWORD }}
         run: node test-lucky-auth-3x.mjs
-      - name: Commit test report only
+
+      - name: Commit report
         if: always()
         run: |
           if [ ! -f lucky-auth-test-report.json ]; then exit 0; fi
