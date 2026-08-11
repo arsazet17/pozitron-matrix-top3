@@ -98,58 +98,53 @@ function parseArchiveText(rawText) {
     .map(clean)
     .filter(Boolean);
 
-  // Сначала собираем только id/time/digits — НЕ зависим от "Сегодня/Вчера".
-  const raw = [];
+  const found = [];
+  let currentDate = '';
 
-  for (let i=0;i<lines.length;i++) {
-    const m = lines[i].match(/(\d{2}):(\d{2})(?::\d{2})?\s*[·•]?\s*№\s*(\d{6})/i);
-    if (!m) continue;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
 
-    const time = `${m[1]}:${m[2]}`;
-    const id = Number(m[3]);
-    if (!REGULAR_TIMES.has(time)) continue;
-
-    const digits = extractDigits(lines,i);
-    if (!digits) continue;
-
-    raw.push({id,time,a:digits[0],b:digits[1],c:digits[2]});
-  }
-
-  // Убираем дубли, сохраняя порядок страницы (новые сверху).
-  const seen = new Set();
-  const ordered = [];
-  for (const r of raw) {
-    if (seen.has(r.id)) continue;
-    seen.add(r.id);
-    ordered.push(r);
-  }
-
-  if (!ordered.length) return [];
-
-  // Дата восстанавливается по хронологии.
-  // На странице новые тиражи сверху. Идём вниз:
-  // если время следующего тиража "больше" предыдущего (например 02:40 -> 22:40),
-  // значит перешли на предыдущий календарный день.
-  let dayOffset = 0;
-  let prevMinutes = null;
-  const out = [];
-
-  for (const r of ordered) {
-    const [hh,mm] = r.time.split(':').map(Number);
-    const minutes = hh*60+mm;
-
-    if (prevMinutes !== null && minutes > prevMinutes) {
-      dayOffset -= 1;
+    if (/^Сегодня$/i.test(line)) {
+      currentDate = formatDate(moscowDateParts(0));
+      continue;
+    }
+    if (/^Вчера$/i.test(line)) {
+      currentDate = formatDate(moscowDateParts(-1));
+      continue;
     }
 
-    const d = moscowDateParts(dayOffset);
-    const item = {...r,date:formatDate(d)};
-    if (validDraw(item)) out.push(item);
+    // Реальный формат Столото:
+    // 04:40:00
+    // № 267473
+    // 9
+    // 1
+    // 5
+    const tm = line.match(/^(\d{2}):(\d{2})(?::\d{2})?$/);
+    if (!tm || !currentDate) continue;
 
-    prevMinutes = minutes;
+    const time = `${tm[1]}:${tm[2]}`;
+    if (!REGULAR_TIMES.has(time)) continue;
+
+    const idLine = lines[i + 1] || '';
+    const idm = idLine.match(/^№\s*(\d{6})$/i);
+    if (!idm) continue;
+
+    const digits = lines.slice(i + 2, i + 5);
+    if (digits.length !== 3 || !digits.every(x => /^[0-9]$/.test(x))) continue;
+
+    const d = {
+      id: Number(idm[1]),
+      date: currentDate,
+      time,
+      a: Number(digits[0]),
+      b: Number(digits[1]),
+      c: Number(digits[2])
+    };
+
+    if (validDraw(d)) found.push(d);
   }
 
-  return dedupe(out);
+  return dedupe(found);
 }
 
 async function firstVisible(candidates) {
