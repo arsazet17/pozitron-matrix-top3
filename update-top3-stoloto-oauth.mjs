@@ -17,101 +17,79 @@ function clean(s) {
   return String(s ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function fmtDate(date) {
-  const parts = new Intl.DateTimeFormat('ru-RU', {
+function moscowDateParts(offsetDays=0) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Europe/Moscow',
-    day: '2-digit',
-    month: '2-digit',
-    year: '2-digit'
-  }).formatToParts(date);
-  const x = Object.fromEntries(parts.map(p => [p.type, p.value]));
-  return `${x.day}.${x.month}.${x.year}`;
+    year:'numeric', month:'2-digit', day:'2-digit'
+  }).formatToParts(new Date());
+  const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+  const d = new Date(Date.UTC(Number(p.year), Number(p.month)-1, Number(p.day), 12, 0, 0));
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d;
 }
 
-function moscowNow() {
-  return new Date();
+function formatDate(d) {
+  return `${String(d.getUTCDate()).padStart(2,'0')}.${String(d.getUTCMonth()+1).padStart(2,'0')}.${String(d.getUTCFullYear()).slice(-2)}`;
 }
 
-function dateOffset(days) {
-  // Вычисляем календарную дату Москвы через полдень UTC, чтобы не ловить границы суток.
-  const now = new Date();
-  const msk = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Europe/Moscow', year:'numeric', month:'2-digit', day:'2-digit'
-  }).formatToParts(now);
-  const x = Object.fromEntries(msk.map(p => [p.type, p.value]));
-  const base = new Date(Date.UTC(Number(x.year), Number(x.month)-1, Number(x.day), 12, 0, 0));
-  base.setUTCDate(base.getUTCDate() + days);
-  return fmtDate(base);
-}
-
-function validCalendarDate(s) {
+function validDate(s) {
   const m = String(s).match(/^(\d{2})\.(\d{2})\.(\d{2})$/);
   if (!m) return false;
-  const d = Number(m[1]), mo = Number(m[2]), y = 2000 + Number(m[3]);
-  const dt = new Date(Date.UTC(y, mo-1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo-1 && dt.getUTCDate() === d;
+  const d = Number(m[1]), mo = Number(m[2]), y = 2000+Number(m[3]);
+  const dt = new Date(Date.UTC(y,mo-1,d));
+  return dt.getUTCFullYear()===y && dt.getUTCMonth()===mo-1 && dt.getUTCDate()===d;
 }
 
 function validDraw(d) {
   return Number.isInteger(d?.id)
     && d.id >= 100000 && d.id <= 999999
-    && validCalendarDate(d.date)
+    && validDate(d.date)
     && REGULAR_TIMES.has(d.time)
     && [d.a,d.b,d.c].every(n => Number.isInteger(n) && n >= 0 && n <= 9);
 }
 
 function normalizeDraw(d) {
-  const out = {
-    id: Number(d?.id),
-    date: String(d?.date ?? ''),
-    time: String(d?.time ?? ''),
-    a: Number(d?.a),
-    b: Number(d?.b),
-    c: Number(d?.c)
+  const x = {
+    id:Number(d?.id),
+    date:String(d?.date ?? ''),
+    time:String(d?.time ?? ''),
+    a:Number(d?.a), b:Number(d?.b), c:Number(d?.c)
   };
-  return validDraw(out) ? out : null;
-}
-
-function drawKey(d) {
-  return `${d.id}|${d.date}|${d.time}|${d.a}${d.b}${d.c}`;
+  return validDraw(x) ? x : null;
 }
 
 function dedupe(draws) {
   const m = new Map();
   for (const raw of draws) {
     const d = normalizeDraw(raw);
-    if (d) m.set(d.id, d);
+    if (d) m.set(d.id,d);
   }
-  return [...m.values()].sort((a,b) => b.id - a.id);
+  return [...m.values()].sort((a,b)=>b.id-a.id);
 }
 
-function parseSectionDate(line) {
-  const t = clean(line).toLowerCase();
-  if (t === 'сегодня') return dateOffset(0);
-  if (t === 'вчера') return dateOffset(-1);
+function drawKey(d) {
+  return `${d.id}|${d.date}|${d.time}|${d.a}${d.b}${d.c}`;
+}
 
-  let m = t.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2}|\d{4})$/);
-  if (m) {
-    const yy = String(m[3]).slice(-2);
-    const s = `${String(m[1]).padStart(2,'0')}.${String(m[2]).padStart(2,'0')}.${yy}`;
-    return validCalendarDate(s) ? s : '';
+function extractDigits(lines, startIndex) {
+  // 1) одна строка вида "9 1 5"
+  for (let j=startIndex+1; j<Math.min(lines.length,startIndex+14); j++) {
+    if (/^\d{2}:\d{2}(?::\d{2})?\b/.test(lines[j]) && /№/.test(lines[j])) break;
+
+    const m = lines[j].match(/^([0-9])\s+([0-9])\s+([0-9])$/);
+    if (m) return [Number(m[1]),Number(m[2]),Number(m[3])];
+
+    // 2) три одиночные цифры подряд
+    if (/^[0-9]$/.test(lines[j])) {
+      const vals = [Number(lines[j])];
+      for (let k=j+1; k<Math.min(lines.length,j+6) && vals.length<3; k++) {
+        if (/^[0-9]$/.test(lines[k])) vals.push(Number(lines[k]));
+        else if (vals.length) break;
+      }
+      if (vals.length===3) return vals;
+    }
   }
-
-  const months = {
-    'января':1,'февраля':2,'марта':3,'апреля':4,'мая':5,'июня':6,
-    'июля':7,'августа':8,'сентября':9,'октября':10,'ноября':11,'декабря':12
-  };
-  m = t.match(/^(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?$/i);
-  if (m && months[m[2]]) {
-    const currentYear = Number(new Intl.DateTimeFormat('en', {
-      timeZone:'Europe/Moscow', year:'numeric'
-    }).format(new Date()));
-    const year = m[3] ? Number(m[3]) : currentYear;
-    const s = `${String(m[1]).padStart(2,'0')}.${String(months[m[2]]).padStart(2,'0')}.${String(year).slice(-2)}`;
-    return validCalendarDate(s) ? s : '';
-  }
-
-  return '';
+  return null;
 }
 
 function parseArchiveText(rawText) {
@@ -120,71 +98,71 @@ function parseArchiveText(rawText) {
     .map(clean)
     .filter(Boolean);
 
-  const found = [];
-  let currentDate = '';
+  // Сначала собираем только id/time/digits — НЕ зависим от "Сегодня/Вчера".
+  const raw = [];
 
-  for (let i=0; i<lines.length; i++) {
-    const sectionDate = parseSectionDate(lines[i]);
-    if (sectionDate) {
-      currentDate = sectionDate;
-      continue;
-    }
+  for (let i=0;i<lines.length;i++) {
+    const m = lines[i].match(/(\d{2}):(\d{2})(?::\d{2})?\s*[·•]?\s*№\s*(\d{6})/i);
+    if (!m) continue;
 
-    const head = lines[i].match(/^(\d{2}):(\d{2})(?::\d{2})?\s*[·•]\s*№\s*(\d{6})$/i);
-    if (!head || !currentDate) continue;
-
-    const time = `${head[1]}:${head[2]}`;
-    const id = Number(head[3]);
+    const time = `${m[1]}:${m[2]}`;
+    const id = Number(m[3]);
     if (!REGULAR_TIMES.has(time)) continue;
 
-    let digits = null;
-
-    for (let j=i+1; j<Math.min(lines.length, i+12); j++) {
-      // До следующего тиража не перескакиваем.
-      if (/^\d{2}:\d{2}(?::\d{2})?\s*[·•]\s*№\s*\d{6}$/i.test(lines[j])) break;
-
-      let m = lines[j].match(/^([0-9])\s+([0-9])\s+([0-9])$/);
-      if (m) {
-        digits = [Number(m[1]),Number(m[2]),Number(m[3])];
-        break;
-      }
-
-      // Иногда innerText отдаёт каждую цифру отдельной строкой.
-      if (/^[0-9]$/.test(lines[j])) {
-        const tmp = [Number(lines[j])];
-        for (let k=j+1; k<Math.min(lines.length,j+5) && tmp.length<3; k++) {
-          if (/^[0-9]$/.test(lines[k])) tmp.push(Number(lines[k]));
-          else if (tmp.length) break;
-        }
-        if (tmp.length === 3) {
-          digits = tmp;
-          break;
-        }
-      }
-    }
-
+    const digits = extractDigits(lines,i);
     if (!digits) continue;
 
-    const d = { id, date: currentDate, time, a:digits[0], b:digits[1], c:digits[2] };
-    if (validDraw(d)) found.push(d);
+    raw.push({id,time,a:digits[0],b:digits[1],c:digits[2]});
   }
 
-  return dedupe(found);
+  // Убираем дубли, сохраняя порядок страницы (новые сверху).
+  const seen = new Set();
+  const ordered = [];
+  for (const r of raw) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    ordered.push(r);
+  }
+
+  if (!ordered.length) return [];
+
+  // Дата восстанавливается по хронологии.
+  // На странице новые тиражи сверху. Идём вниз:
+  // если время следующего тиража "больше" предыдущего (например 02:40 -> 22:40),
+  // значит перешли на предыдущий календарный день.
+  let dayOffset = 0;
+  let prevMinutes = null;
+  const out = [];
+
+  for (const r of ordered) {
+    const [hh,mm] = r.time.split(':').map(Number);
+    const minutes = hh*60+mm;
+
+    if (prevMinutes !== null && minutes > prevMinutes) {
+      dayOffset -= 1;
+    }
+
+    const d = moscowDateParts(dayOffset);
+    const item = {...r,date:formatDate(d)};
+    if (validDraw(item)) out.push(item);
+
+    prevMinutes = minutes;
+  }
+
+  return dedupe(out);
 }
 
 async function firstVisible(candidates) {
   for (const loc of candidates) {
-    if (await loc.isVisible({ timeout: 800 }).catch(() => false)) return loc;
+    if (await loc.isVisible({timeout:800}).catch(()=>false)) return loc;
   }
   return null;
 }
 
 async function login(page) {
-  if (!EMAIL || !PASSWORD) {
-    throw new Error('не заданы Secrets STOLOTO_EMAIL / STOLOTO_PASSWORD');
-  }
+  if (!EMAIL || !PASSWORD) throw new Error('не заданы Secrets STOLOTO_EMAIL / STOLOTO_PASSWORD');
 
-  await page.goto(LOGIN_URL, { waitUntil:'domcontentloaded', timeout:45000 });
+  await page.goto(LOGIN_URL,{waitUntil:'domcontentloaded',timeout:45000});
   await page.waitForTimeout(900);
 
   const email = await firstVisible([
@@ -210,32 +188,30 @@ async function login(page) {
   await password.fill(PASSWORD);
 
   const submit = await firstVisible([
-    page.getByRole('button', { name:/^войти$/i }).first(),
+    page.getByRole('button',{name:/^войти$/i}).first(),
     page.locator('button[type="submit"]').first(),
     page.locator('input[type="submit"]').first()
   ]);
 
   if (!submit) throw new Error('OAuth-форма не отдала кнопку "Войти"');
-  if (!(await submit.isEnabled().catch(() => false))) throw new Error('кнопка "Войти" неактивна');
+  if (!(await submit.isEnabled().catch(()=>false))) throw new Error('кнопка "Войти" неактивна');
 
-  await submit.click({ timeout:5000 });
-  await page.waitForLoadState('domcontentloaded', { timeout:15000 }).catch(() => {});
+  await submit.click({timeout:5000});
+  await page.waitForLoadState('domcontentloaded',{timeout:15000}).catch(()=>{});
   await page.waitForTimeout(1800);
 
-  const body = clean(await page.locator('body').innerText().catch(() => ''));
+  const body = clean(await page.locator('body').innerText().catch(()=>''));
   if (/неверн.*(парол|логин|почт)|пользователь.*не найден|ошибк.*вход/i.test(body)) {
     throw new Error('Столото отклонил авторизацию');
   }
 
   const stillPassword = await page.locator('input[type="password"]').first()
-    .isVisible({ timeout:300 }).catch(() => false);
+    .isVisible({timeout:300}).catch(()=>false);
 
-  if (page.url().includes('/login') && stillPassword) {
-    throw new Error('OAuth-вход не подтверждён');
-  }
+  if (page.url().includes('/login') && stillPassword) throw new Error('OAuth-вход не подтверждён');
 }
 
-async function readArchivePass(browser, pass) {
+async function readArchivePass(browser,pass) {
   const context = await browser.newContext({
     locale:'ru-RU',
     timezoneId:'Europe/Moscow',
@@ -247,26 +223,29 @@ async function readArchivePass(browser, pass) {
 
   try {
     await login(page);
-    await page.goto(ARCHIVE_URL, { waitUntil:'domcontentloaded', timeout:45000 });
+    await page.goto(ARCHIVE_URL,{waitUntil:'domcontentloaded',timeout:45000});
     await page.waitForTimeout(2200);
 
-    // Чуть прокручиваем, чтобы динамический архив успел дорисовать "Вчера".
-    for (let i=0; i<4; i++) {
-      await page.mouse.wheel(0, 1400);
+    for (let i=0;i<5;i++) {
+      await page.mouse.wheel(0,1400);
       await page.waitForTimeout(350);
     }
-    await page.mouse.wheel(0, -6000);
+
+    await page.mouse.wheel(0,-7000);
     await page.waitForTimeout(500);
 
     const body = await page.locator('body').innerText();
-    if (!/Архив тиражей/i.test(body)) throw new Error('не найден блок "Архив тиражей"');
 
     const draws = parseArchiveText(body);
+
     if (draws.length < 3) {
+      // Диагностика без секретов: покажет первые строки страницы, если формат снова изменится.
+      const sample = body.split(/\r?\n/).map(clean).filter(Boolean).slice(0,80);
+      console.log('ARCHIVE TEXT SAMPLE:', JSON.stringify(sample));
       throw new Error(`распознано слишком мало тиражей: ${draws.length}`);
     }
 
-    console.log(`PASS ${pass}: ${draws.length} rows; latest №${draws[0].id} ${draws[0].date} ${draws[0].time}=${draws[0].a}${draws[0].b}${draws[0].c}`);
+    console.log(`PASS ${pass}: rows=${draws.length}; latest №${draws[0].id} ${draws[0].date} ${draws[0].time}=${draws[0].a}${draws[0].b}${draws[0].c}`);
     return draws;
   } finally {
     await context.close();
@@ -274,120 +253,98 @@ async function readArchivePass(browser, pass) {
 }
 
 function sameSnapshot(a,b) {
-  // Верхние 12 строк должны совпасть. Этого достаточно, чтобы не записать нестабильную выдачу.
-  return JSON.stringify(a.slice(0,12)) === JSON.stringify(b.slice(0,12));
+  return JSON.stringify(a.slice(0,12))===JSON.stringify(b.slice(0,12));
 }
 
 function moscowStamp(d) {
-  const [dd,mm,yy] = d.date.split('.').map(Number);
-  const [hh,mi] = d.time.split(':').map(Number);
-  return Date.UTC(2000+yy, mm-1, dd, hh-3, mi);
+  const [dd,mm,yy]=d.date.split('.').map(Number);
+  const [hh,mi]=d.time.split(':').map(Number);
+  return Date.UTC(2000+yy,mm-1,dd,hh-3,mi);
 }
 
 async function main() {
-  const live = JSON.parse(await fs.readFile(LIVE_FILE, 'utf8'));
-  const existing = dedupe(live.draws || []);
+  const live = JSON.parse(await fs.readFile(LIVE_FILE,'utf8'));
+  const existing = dedupe(live.draws||[]);
   if (!existing.length) throw new Error('top3-live.json не содержит доверенных тиражей');
 
   const anchor = existing[0];
   console.log(`Доверенный anchor: №${anchor.id} ${anchor.date} ${anchor.time}=${anchor.a}${anchor.b}${anchor.c}`);
 
-  const browser = await chromium.launch({ headless:true });
-  let passes;
-
+  const browser = await chromium.launch({headless:true});
+  let passes=[];
   try {
-    passes = [];
-    for (let pass=1; pass<=3; pass++) {
-      passes.push(await readArchivePass(browser, pass));
-    }
+    for (let i=1;i<=3;i++) passes.push(await readArchivePass(browser,i));
   } finally {
     await browser.close();
   }
 
-  if (!sameSnapshot(passes[0], passes[1]) || !sameSnapshot(passes[1], passes[2])) {
+  if (!sameSnapshot(passes[0],passes[1]) || !sameSnapshot(passes[1],passes[2])) {
     throw new Error('три независимых чтения Столото не совпали — запись запрещена');
   }
 
   const source = passes[0];
+  const sourceAnchor = source.find(d=>d.id===anchor.id);
+  if (!sourceAnchor) throw new Error(`официальный архив не содержит доверенный anchor №${anchor.id}`);
 
-  const sourceAnchor = source.find(d => d.id === anchor.id);
-  if (!sourceAnchor) {
-    throw new Error(`официальный архив не содержит доверенный anchor №${anchor.id} — запись запрещена`);
+  if (drawKey(sourceAnchor)!==drawKey(anchor)) {
+    throw new Error(`anchor №${anchor.id} не совпал: ожидалось ${drawKey(anchor)}, получено ${drawKey(sourceAnchor)}`);
   }
 
-  if (drawKey(sourceAnchor) !== drawKey(anchor)) {
-    throw new Error(
-      `anchor №${anchor.id} не совпал: ожидалось ${drawKey(anchor)}, получено ${drawKey(sourceAnchor)}`
-    );
-  }
+  const existingMap = new Map(existing.map(d=>[d.id,d]));
+  let overlap=0;
 
-  // Все пересечения с уже сохранёнными данными обязаны совпадать.
-  const existingMap = new Map(existing.map(d => [d.id, d]));
-  let overlap = 0;
   for (const d of source) {
-    const old = existingMap.get(d.id);
+    const old=existingMap.get(d.id);
     if (!old) continue;
     overlap++;
-    if (drawKey(old) !== drawKey(d)) {
-      throw new Error(`несовпадение сохранённого тиража №${d.id}`);
-    }
-  }
-  if (overlap < 1) throw new Error('нет ни одного подтверждённого пересечения с архивом');
-
-  const newer = source
-    .filter(d => d.id > anchor.id)
-    .sort((a,b) => a.id - b.id);
-
-  for (let i=0; i<newer.length; i++) {
-    const expected = anchor.id + 1 + i;
-    if (newer[i].id !== expected) {
-      throw new Error(`разрыв номеров: ожидался №${expected}, получен №${newer[i].id}`);
-    }
+    if (drawKey(old)!==drawKey(d)) throw new Error(`несовпадение сохранённого тиража №${d.id}`);
   }
 
-  let prev = anchor;
-  const seenSlots = new Set(existing.slice(0,30).map(d => `${d.date}|${d.time}`));
+  if (overlap<1) throw new Error('нет подтверждённого пересечения с архивом');
+
+  const newer = source.filter(d=>d.id>anchor.id).sort((a,b)=>a.id-b.id);
+
+  for (let i=0;i<newer.length;i++) {
+    const expected=anchor.id+1+i;
+    if (newer[i].id!==expected) throw new Error(`разрыв номеров: ожидался №${expected}, получен №${newer[i].id}`);
+  }
+
+  let prev=anchor;
+  const slots=new Set(existing.slice(0,30).map(d=>`${d.date}|${d.time}`));
 
   for (const d of newer) {
-    if (moscowStamp(d) <= moscowStamp(prev)) {
-      throw new Error(`нарушена хронология №${prev.id} -> №${d.id}`);
-    }
-
-    const slot = `${d.date}|${d.time}`;
-    if (seenSlots.has(slot)) throw new Error(`повтор даты/времени ${slot}`);
-    seenSlots.add(slot);
-    prev = d;
+    if (moscowStamp(d)<=moscowStamp(prev)) throw new Error(`нарушена хронология №${prev.id} -> №${d.id}`);
+    const slot=`${d.date}|${d.time}`;
+    if (slots.has(slot)) throw new Error(`повтор даты/времени ${slot}`);
+    slots.add(slot);
+    prev=d;
   }
 
-  if (newer.length > 30) {
-    throw new Error(`слишком большой скачок за один запуск: ${newer.length} тиражей`);
-  }
+  if (newer.length>30) throw new Error(`слишком большой скачок: ${newer.length}`);
 
   if (!newer.length) {
-    console.log('Новых подтверждённых тиражей нет. top3-live.json не меняется.');
+    console.log('Новых подтверждённых тиражей нет.');
     return;
   }
 
-  const merged = dedupe([...newer, ...existing]).slice(0,150);
+  const merged=dedupe([...newer,...existing]).slice(0,150);
 
-  const output = {
+  const output={
     ...live,
-    schema: 3,
-    source: 'Официальный Столото · OAuth · тройная проверка',
-    updatedAt: new Date().toISOString(),
-    latest: merged[0].id,
-    draws: merged
+    schema:3,
+    source:'Официальный Столото · OAuth · тройная проверка',
+    updatedAt:new Date().toISOString(),
+    latest:merged[0].id,
+    draws:merged
   };
 
-  await fs.writeFile(LIVE_FILE, JSON.stringify(output, null, 2) + '\n', 'utf8');
+  await fs.writeFile(LIVE_FILE,JSON.stringify(output,null,2)+'\n','utf8');
 
   console.log(`ГОТОВО: добавлено ${newer.length}; latest №${merged[0].id}`);
-  for (const d of newer) {
-    console.log(`№${d.id} ${d.date} ${d.time} = ${d.a}${d.b}${d.c}`);
-  }
+  for (const d of newer) console.log(`№${d.id} ${d.date} ${d.time}=${d.a}${d.b}${d.c}`);
 }
 
-main().catch(err => {
-  console.error('SAFE STOLOTO UPDATER ERROR:', err.message);
+main().catch(err=>{
+  console.error('SAFE STOLOTO UPDATER ERROR:',err.message);
   process.exit(1);
 });
