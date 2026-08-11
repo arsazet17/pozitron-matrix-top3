@@ -98,20 +98,63 @@ function parseArchiveText(rawText) {
     .map(clean)
     .filter(Boolean);
 
+  const months = {
+    'января':1,'февраля':2,'марта':3,'апреля':4,'мая':5,'июня':6,
+    'июля':7,'августа':8,'сентября':9,'октября':10,'ноября':11,'декабря':12
+  };
+
+  const currentYear = Number(new Intl.DateTimeFormat('en', {
+    timeZone:'Europe/Moscow',
+    year:'numeric'
+  }).format(new Date()));
+
   const found = [];
   let currentDate = '';
+
+  function setExplicitDate(line) {
+    if (/^Сегодня$/i.test(line)) {
+      currentDate = formatDate(moscowDateParts(0));
+      return true;
+    }
+
+    if (/^Вчера$/i.test(line)) {
+      currentDate = formatDate(moscowDateParts(-1));
+      return true;
+    }
+
+    // Форматы вида "9 августа", "9 августа 2026"
+    let m = line.toLowerCase().match(/^(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?$/i);
+    if (m && months[m[2]]) {
+      const day = Number(m[1]);
+      const month = months[m[2]];
+      const year = m[3] ? Number(m[3]) : currentYear;
+      const d = new Date(Date.UTC(year, month - 1, day));
+      const candidate = formatDate(d);
+      if (validDate(candidate)) {
+        currentDate = candidate;
+        return true;
+      }
+    }
+
+    // Форматы вида 09.08.2026 / 09.08.26
+    m = line.match(/^(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2}|\d{4})$/);
+    if (m) {
+      const year = String(m[3]).length === 2 ? 2000 + Number(m[3]) : Number(m[3]);
+      const d = new Date(Date.UTC(year, Number(m[2]) - 1, Number(m[1])));
+      const candidate = formatDate(d);
+      if (validDate(candidate)) {
+        currentDate = candidate;
+        return true;
+      }
+    }
+
+    return false;
+  }
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    if (/^Сегодня$/i.test(line)) {
-      currentDate = formatDate(moscowDateParts(0));
-      continue;
-    }
-    if (/^Вчера$/i.test(line)) {
-      currentDate = formatDate(moscowDateParts(-1));
-      continue;
-    }
+    if (setExplicitDate(line)) continue;
 
     // Реальный формат Столото:
     // 04:40:00
