@@ -1,0 +1,57 @@
+{
+  "testedAt": "2026-08-11T02:40:28.071Z",
+  "source": {
+    "login": "https://oauth.stoloto.ru/login",
+    "archive": "https://m.stoloto.ru/top3/archive"
+  },
+  "mode": "TEST ONLY — direct Stoloto OAuth 3x; top3-live.json НЕ изменяется",
+  "passes": [
+    {
+      "pass": 1,
+      "ok": true,
+      "afterLoginUrl": "https://oauth.stoloto.ru/",
+      "archiveUrl": "https://m.stoloto.ru/top3/archive",
+      "firstVisibleDraw": 267474,
+      "visibleDraws": [
+        267474,
+        267473,
+        267472,
+        267471,
+        267470
+      ],
+      "hasDownloadArchive": true
+    },
+    {
+      "pass": 2,
+      "ok": true,
+      "afterLoginUrl": "https://oauth.stoloto.ru/",
+      "archiveUrl": "https://m.stoloto.ru/top3/archive",
+      "firstVisibleDraw": 267474,
+      "visibleDraws": [
+        267474,
+        267473,
+        267472,
+        267471,
+        267470
+      ],
+      "hasDownloadArchive": true
+    },
+    {
+      "pass": 3,
+      "ok": true,
+      "afterLoginUrl": "https://oauth.stoloto.ru/",
+      "archiveUrl": "https://m.stoloto.ru/top3/archive",
+      "firstVisibleDraw": 267474,
+      "visibleDraws": [
+        267474,
+        267473,
+        267472,
+        267471,
+        267470
+      ],
+      "hasDownloadArchive": true
+    }
+  ],
+  "consensus": true,
+  "status": "PASS"
+}
