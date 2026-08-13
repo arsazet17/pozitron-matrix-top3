@@ -173,7 +173,7 @@
 
   function detectorSnapshot(f){
     return {
-      version:'STATE DETECTOR v1.2.2',
+      version:'STATE DETECTOR v1.2.8',
       target:{...f.target},
       forecast:[...f.picks],
       bet:f.bet,
@@ -240,18 +240,58 @@
   };
 
   function syncPredictionsFromStorage(){
-    const stored=readPredictions();
-    if(Array.isArray(stored))state.predictions=stored;
+    // v1.2.8: LAB archive never reads localStorage.
     return state.predictions;
   }
 
+  const ARCHIVE_DB='pozitron.matrix.lab.archive.v1';
+  const ARCHIVE_STORE='records';
+  function openArchiveDb(){
+    return new Promise((resolve,reject)=>{
+      if(!window.indexedDB){reject(new Error('IndexedDB unavailable'));return}
+      const req=indexedDB.open(ARCHIVE_DB,1);
+      req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(ARCHIVE_STORE))db.createObjectStore(ARCHIVE_STORE,{keyPath:'id'})};
+      req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error||new Error('IndexedDB open failed'));
+    });
+  }
+  async function idbWriteRecords(records){
+    const db=await openArchiveDb();
+    try{await new Promise((resolve,reject)=>{const tx=db.transaction(ARCHIVE_STORE,'readwrite'),st=tx.objectStore(ARCHIVE_STORE);records.forEach(r=>st.put(r));tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error||new Error('IndexedDB write failed'));tx.onabort=()=>reject(tx.error||new Error('IndexedDB write aborted'))})}finally{db.close()}
+  }
+  async function idbReadRecords(){
+    const db=await openArchiveDb();
+    try{return await new Promise((resolve,reject)=>{const tx=db.transaction(ARCHIVE_STORE,'readonly'),req=tx.objectStore(ARCHIVE_STORE).getAll();req.onsuccess=()=>resolve(Array.isArray(req.result)?req.result:[]);req.onerror=()=>reject(req.error||new Error('IndexedDB read failed'))})}finally{db.close()}
+  }
+  async function restoreArchiveFromIdb(){
+    try{
+      const rows=await idbReadRecords();
+      state.predictions=Array.isArray(rows)?rows:[];
+      renderStats();renderArchive();
+    }catch(err){
+      state.predictions=[];
+      renderStats();renderArchive();
+      toast('ОШИБКА: архив IndexedDB недоступен.');
+    }
+  }
+
+  // LAB archive is IndexedDB-only. Never read or write localStorage.
+  readPredictions=function(){return state.predictions};
+  writePredictions=function(){
+    const snapshot=JSON.parse(JSON.stringify(state.predictions||[]));
+    idbWriteRecords(snapshot).catch(()=>toast('ОШИБКА: не удалось обновить архив IndexedDB.'));
+  };
+  setTimeout(restoreArchiveFromIdb,0);
+
   function hasSavedTarget(date,time){
-    syncPredictionsFromStorage();
     return state.predictions.some(p=>p&&p.targetDate===date&&p.targetTime===time&&p.origin!==false);
   }
 
-  saveForecast=function(){
+  saveForecast=async function(){
     const f=labForecast();if(!f)return;const targets=targetsForRepeat(f);if(!targets.length)return;
+    try{
+      const persisted=await idbReadRecords();
+      state.predictions=Array.isArray(persisted)?persisted:[];
+    }catch(err){toast('ОШИБКА: архив IndexedDB недоступен.');return}
     if(hasSavedTarget(f.target.date,f.target.time)){renderStats();renderArchive();toast('Прогноз на этот тираж уже зафиксирован и находится в архиве.');return}
     const now=new Date().toISOString(),originId=`lab-${Date.now()}`,total=targets.length;
     const frozenSnapshot=JSON.parse(JSON.stringify(f.detectorState||detectorSnapshot(f)));
@@ -265,29 +305,37 @@
       fact:null,resultStatus:f.bet==='skip'?'skip':'pending',matchedPositions:[],recommendationWon:null,winAmount:0
     }));
 
-    // One atomic source of truth: localStorage. Write, read back, verify IDs.
-    const before=syncPredictionsFromStorage();
+    // IndexedDB is the only source of truth for the LAB archive.
+    const before=[...state.predictions];
     state.predictions=[...newRecords,...before.filter(old=>!newRecords.some(n=>n.id===old.id))];
-    try{writePredictions()}catch(err){toast('ОШИБКА: прогноз не записан в архив.');return}
-    const stored=syncPredictionsFromStorage();
-    const savedIds=new Set(stored.map(p=>p&&p.id));
-    const verified=newRecords.every(p=>savedIds.has(p.id));
-    if(!verified){toast('ОШИБКА ПРОВЕРКИ: запись не найдена в архиве.');return}
+    let verified=false;
+    try{
+      await idbWriteRecords(state.predictions);
+      const stored=await idbReadRecords();
+      const savedIds=new Set(stored.map(p=>p&&p.id));
+      verified=newRecords.every(p=>savedIds.has(p.id));
+      if(verified)state.predictions=stored;
+    }catch(err){verified=false}
+    if(!verified){
+      state.predictions=before;
+      toast('ОШИБКА: прогноз не записан в IndexedDB.');
+      return
+    }
 
     applyFacts(false);
     renderStats();
     renderArchive();
     renderLab();
-    toast(`СОХРАНЕНО В АРХИВ: ${newRecords.length}. Всего записей: ${state.predictions.length}.`)
+    toast(`СОХРАНЕНО В АРХИВ: ${newRecords.length} · IndexedDB. Всего: ${state.predictions.length}.`)
   };
 
-  // Keep archive/statistics bound to the same persisted source even after reload/cache refresh.
+  // Archive/statistics render only the in-memory mirror loaded from IndexedDB.
   const _renderStatsPersisted=renderStats;
-  renderStats=function(){syncPredictionsFromStorage();return _renderStatsPersisted()};
+  renderStats=function(){return _renderStatsPersisted()};
   const _renderArchivePersisted=renderArchive;
-  renderArchive=function(){syncPredictionsFromStorage();return _renderArchivePersisted()};
+  renderArchive=function(){return _renderArchivePersisted()};
 
-  /* v1.2.6 — persistent honest archive + clean mobile archive.
+  /* v1.2.8 — IndexedDB-only persistent archive + clean mobile archive.
      Keep the full detector snapshot frozen in storage, but never dump it into the archive UI.
      The archive shows only: target forecast, AI bet, fact, and result/payout. */
   const detectorArchiveStyle=document.createElement('style');
