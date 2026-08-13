@@ -347,13 +347,37 @@
     toast(`СОХРАНЕНО В АРХИВ: ${newRecords.length} · IndexedDB. Всего: ${state.predictions.length}.`)
   };
 
+  // v1.3.1: mode-aware save button.
+  // A saved horizontal package must not block a vertical package from the same source forecast.
+  const _renderRepeatControlsModeAware=renderRepeatControls;
+  renderRepeatControls=function(f){
+    _renderRepeatControlsModeAware(f);
+
+    const btn=$('#saveForecastBtn');
+    if(!btn||!f)return;
+
+    const duplicateSameMode=hasSavedSource(f.target.date,f.target.time,state.repeatMode);
+    btn.disabled=duplicateSameMode;
+
+    if(duplicateSameMode){
+      const modeName=state.repeatMode==='vertical'
+        ? 'ВЕРТИКАЛЬ УЖЕ СОХРАНЕНА'
+        : state.repeatMode==='horizontal'
+          ? 'ГОРИЗОНТАЛЬ УЖЕ СОХРАНЕНА'
+          : 'ПРОГНОЗ УЖЕ СОХРАНЁН';
+      btn.textContent=`🔒 ${modeName}`;
+    }else{
+      btn.textContent='🔒 СОХРАНИТЬ ПРОГНОЗ ДО ТИРАЖА';
+    }
+  };
+
   // Archive/statistics render only the in-memory mirror loaded from IndexedDB.
   const _renderStatsPersisted=renderStats;
   renderStats=function(){return _renderStatsPersisted()};
   const _renderArchivePersisted=renderArchive;
   renderArchive=function(){return _renderArchivePersisted()};
 
-  /* v1.3.0 — IndexedDB-only archive + collapsible colored forecast packages.
+  /* v1.3.1 — IndexedDB-only archive + mode-aware vertical save.
      Keep the full detector snapshot frozen in storage, but never dump it into the archive UI.
      The archive shows only: target forecast, AI bet, fact, and result/payout. */
   const detectorArchiveStyle=document.createElement('style');
