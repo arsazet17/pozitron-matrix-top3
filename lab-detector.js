@@ -239,9 +239,20 @@
     return f;
   };
 
+  function syncPredictionsFromStorage(){
+    const stored=readPredictions();
+    if(Array.isArray(stored))state.predictions=stored;
+    return state.predictions;
+  }
+
+  function hasSavedTarget(date,time){
+    syncPredictionsFromStorage();
+    return state.predictions.some(p=>p&&p.targetDate===date&&p.targetTime===time&&p.origin!==false);
+  }
+
   saveForecast=function(){
     const f=labForecast();if(!f)return;const targets=targetsForRepeat(f);if(!targets.length)return;
-    if(state.predictions.some(p=>p.targetDate===f.target.date&&p.targetTime===f.target.time&&p.origin!==false)){toast('Прогноз на этот тираж уже зафиксирован.');return}
+    if(hasSavedTarget(f.target.date,f.target.time)){renderStats();renderArchive();toast('Прогноз на этот тираж уже зафиксирован и находится в архиве.');return}
     const now=new Date().toISOString(),originId=`lab-${Date.now()}`,total=targets.length;
     const frozenSnapshot=JSON.parse(JSON.stringify(f.detectorState||detectorSnapshot(f)));
     frozenSnapshot.savedAt=now;
@@ -253,10 +264,30 @@
       detectorSnapshot:JSON.parse(JSON.stringify(frozenSnapshot)),
       fact:null,resultStatus:f.bet==='skip'?'skip':'pending',matchedPositions:[],recommendationWon:null,winAmount:0
     }));
-    state.predictions=[...newRecords,...state.predictions];writePredictions();renderLab();toast(`Сохранено записей: ${newRecords.length}. Детектор и прогноз заблокированы.`)
+
+    // One atomic source of truth: localStorage. Write, read back, verify IDs.
+    const before=syncPredictionsFromStorage();
+    state.predictions=[...newRecords,...before.filter(old=>!newRecords.some(n=>n.id===old.id))];
+    try{writePredictions()}catch(err){toast('ОШИБКА: прогноз не записан в архив.');return}
+    const stored=syncPredictionsFromStorage();
+    const savedIds=new Set(stored.map(p=>p&&p.id));
+    const verified=newRecords.every(p=>savedIds.has(p.id));
+    if(!verified){toast('ОШИБКА ПРОВЕРКИ: запись не найдена в архиве.');return}
+
+    applyFacts(false);
+    renderStats();
+    renderArchive();
+    renderLab();
+    toast(`СОХРАНЕНО В АРХИВ: ${newRecords.length}. Всего записей: ${state.predictions.length}.`)
   };
 
-  /* v1.2.5 — clean mobile archive.
+  // Keep archive/statistics bound to the same persisted source even after reload/cache refresh.
+  const _renderStatsPersisted=renderStats;
+  renderStats=function(){syncPredictionsFromStorage();return _renderStatsPersisted()};
+  const _renderArchivePersisted=renderArchive;
+  renderArchive=function(){syncPredictionsFromStorage();return _renderArchivePersisted()};
+
+  /* v1.2.6 — persistent honest archive + clean mobile archive.
      Keep the full detector snapshot frozen in storage, but never dump it into the archive UI.
      The archive shows only: target forecast, AI bet, fact, and result/payout. */
   const detectorArchiveStyle=document.createElement('style');
