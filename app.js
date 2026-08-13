@@ -2,7 +2,7 @@
 const LIVE_URL='./top3-live.json';
 const LAB_KEY='pozitron.labMatrix.predictions.v1';
 const ALGORITHM='LAB v1 · CENTER 8 · pressureTorque 369 · position ON/OFF';
-const state={draws:[],days:14,rowLimit:50,mode:'ALL',activeDigits:new Set(),tab:'matrix',updatedAt:null,source:'встроенный архив',predictions:[],archiveFilter:'all',repeatMode:'none',repeatCount:3,repeatTouched:false,forecastKey:null};
+const state={draws:[],days:14,rowLimit:50,mode:'ALL',activeDigits:new Set(),tab:'matrix',updatedAt:null,source:'встроенный архив',predictions:[],archiveFilter:'all',repeatMode:'none',repeatCount:3,forecastKey:null};
 const $=s=>document.querySelector(s); const $$=s=>[...document.querySelectorAll(s)];
 const WEEK=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 const BETS={
@@ -20,6 +20,7 @@ function readPredictions(){try{const x=JSON.parse(localStorage.getItem(LAB_KEY)|
 function writePredictions(){localStorage.setItem(LAB_KEY,JSON.stringify(state.predictions))}
 function combo(d){return[d.a,d.b,d.c]}
 function comboText(a){return a.join(' – ')}
+function drawWord(n){const x=Math.abs(n)%100,y=x%10;return x>10&&x<20?'тиражей':y===1?'тираж':y>=2&&y<=4?'тиража':'тиражей'}
 function sameMultiset(a,b){return [...a].sort().join('')===[...b].sort().join('')}
 function rub(n){return `${Math.round(n).toLocaleString('ru-RU')} ₽`}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -71,18 +72,26 @@ function labForecast(){
   else if(Math.max(firstStrength,lastStrength)>=.13){if(lastStrength>firstStrength){bet='last2';stakePositions=[1,2]}else{bet='first2';stakePositions=[0,1]}}
   else{const best=conf.indexOf(Math.max(...conf));if(conf[best]>=.08){bet='exact1';stakePositions=[best]}}
   const verticalStrength=positions.reduce((s,p)=>s+p.timeCount,0)/Math.max(1,timeRows.length*3);const horizontalStrength=positions.reduce((s,p)=>s+p.dayCount,0)/Math.max(1,dayRows.length*3);
-  const suggestedRepeat=verticalStrength>=horizontalStrength?'vertical':'horizontal';
+  let suggestedRepeat=verticalStrength>=horizontalStrength?'vertical':'horizontal';
+  const selectedConfidence=stakePositions.length?stakePositions.reduce((s,i)=>s+conf[i],0)/stakePositions.length:conf.reduce((s,x)=>s+x,0)/3;
+  const remainingToday=scheduleTimes().filter(t=>t>=target.time).length;
+  const repeatPower=Math.min(1,horizontalStrength*4+selectedConfidence*2);
+  const horizontalRepeatCount=bet==='skip'?1:Math.max(1,Math.min(6,remainingToday,Math.round(2+repeatPower*4)));
+  if(suggestedRepeat==='horizontal'&&remainingToday<2)suggestedRepeat='vertical';
+  const horizontalTimes=scheduleTimes().filter(t=>t>=target.time).slice(0,horizontalRepeatCount);
   const stakeDigits=stakePositions.map(i=>picks[i]);const cost=betCost(bet,picks);
-  return {target,picks,bet,stakePositions,stakeDigits,cost,positions,verticalStrength,horizontalStrength,suggestedRepeat,timeRows:timeRows.length,dayRows:dayRows.length,centerMode:'8 жёсткий центр',factor369:positions.map(p=>p.factorOn?'ON':'OFF'),verticalSignal:`${Math.round(verticalStrength*100)}%`,horizontalSignal:`${Math.round(horizontalStrength*100)}%`,mirrorRotation:true,repeatState:false,algorithm:ALGORITHM};
+  return {target,picks,bet,stakePositions,stakeDigits,cost,positions,verticalStrength,horizontalStrength,suggestedRepeat,horizontalRepeatCount,horizontalTimes,timeRows:timeRows.length,dayRows:dayRows.length,centerMode:'8 жёсткий центр',factor369:positions.map(p=>p.factorOn?'ON':'OFF'),verticalSignal:`${Math.round(verticalStrength*100)}%`,horizontalSignal:`${Math.round(horizontalStrength*100)}%`,mirrorRotation:true,repeatState:false,algorithm:ALGORITHM};
 }
 function betCost(code,picks){if(code==='skip')return 0;if(code==='combo6')return new Set(picks).size===3?540:270;return 90}
 function betLabel(code){return BETS[code]?.label||code}
 function defaultRepeat(f){return f.suggestedRepeat}
+function repeatAdviceText(f){if(f.bet==='skip')return'НЕ ТИРАЖИРОВАТЬ';if(f.suggestedRepeat==='vertical')return`↑ ПО ВЕРТИКАЛИ · 1 ПОВТОР · ${addDays(f.target.date,1)} В ${f.target.time}`;return`→ ПО ГОРИЗОНТАЛИ · ${f.horizontalRepeatCount} ${drawWord(f.horizontalRepeatCount).toUpperCase()} · ${f.horizontalTimes.join(', ')}`}
 function renderLab(){
   const f=labForecast();if(!f){$('#labForecast').innerHTML='<div class="archive-empty">Недостаточно данных для расчёта следующего тиража.</div>';return}
-  const key=`${f.target.date}|${f.target.time}|${f.picks.join('')}`;if(state.forecastKey!==key){state.forecastKey=key;if(!state.repeatTouched)state.repeatMode=defaultRepeat(f)}
+  const key=`${f.target.date}|${f.target.time}|${f.picks.join('')}`;if(state.forecastKey!==key){state.forecastKey=key;state.repeatMode=defaultRepeat(f);state.repeatCount=f.horizontalRepeatCount}
   const adviceClass=f.bet==='skip'?'skip-type':'';const stake=f.bet==='skip'?'ставки нет':comboText(f.stakeDigits);
-  $('#labForecast').innerHTML=`<div class="forecast-panel"><div class="forecast-main"><div class="forecast-target"><span>Целевой тираж: <b>№${f.target.id}</b></span><span><b>${f.target.date} · ${f.target.time}</b></span></div><div class="forecast-label">ПРОГНОЗ</div><div class="forecast-digits">${f.picks.map(n=>`<span class="forecast-digit">${n}</span>`).join('')}</div></div><div class="forecast-advice"><div class="forecast-label">ПРОГНОЗ ИИ</div><div class="advice-type ${adviceClass}">${betLabel(f.bet)}</div><div class="forecast-label">СТАВКА</div><div class="stake-line">${stake}</div><div class="stake-cost">Стоимость: ${rub(f.cost)}</div><div class="ai-repeat">Совет по тиражированию: <b>${f.suggestedRepeat==='vertical'?'↑ ПО ВЕРТИКАЛИ':'→ ПО ГОРИЗОНТАЛИ'}</b></div></div></div>`;
+  const repeatAdvice=repeatAdviceText(f);
+  $('#labForecast').innerHTML=`<div class="forecast-panel"><div class="forecast-main"><div class="forecast-target"><span>Целевой тираж: <b>№${f.target.id}</b></span><span><b>${f.target.date} · ${f.target.time}</b></span></div><div class="forecast-label">ПРОГНОЗ</div><div class="forecast-digits">${f.picks.map(n=>`<span class="forecast-digit">${n}</span>`).join('')}</div></div><div class="forecast-advice"><div class="forecast-label">ПРОГНОЗ ИИ</div><div class="advice-type ${adviceClass}">${betLabel(f.bet)}</div><div class="forecast-label">СТАВКА</div><div class="stake-line">${stake}</div><div class="stake-cost">Стоимость: ${rub(f.cost)}</div><div class="ai-repeat">Совет по тиражированию: <b>${repeatAdvice}</b></div></div></div>`;
   $('#labSignals').innerHTML=`<div class="signal-row"><span>Вертикаль ${f.target.time}</span><b>${f.verticalSignal}</b></div><div class="signal-row"><span>Горизонталь ${weekday(f.target.date)}</span><b>${f.horizontalSignal}</b></div><div class="signal-row"><span>Центр</span><b>${f.centerMode}</b></div><div class="signal-row"><span>369 по позициям</span><b>${f.factor369.join(' / ')}</b></div><div class="signal-row"><span>Поворот / зеркало</span><b>учтены</b></div><div class="signal-row"><span>Алгоритм</span><b>LAB v1</b></div>`;
   renderRepeatControls(f);renderStats();renderArchive();
 }
@@ -90,10 +99,11 @@ function horizontalTargets(target,count){const times=scheduleTimes().filter(t=>t
 function targetsForRepeat(f){if(state.repeatMode==='vertical')return [f.target,{id:null,date:addDays(f.target.date,1),time:f.target.time}];if(state.repeatMode==='horizontal')return horizontalTargets(f.target,state.repeatCount);return[f.target]}
 function renderRepeatControls(f){
   $$('#repeatMode button').forEach(b=>b.classList.toggle('active',b.dataset.repeat===state.repeatMode));
+  $('#repeatCount').value=String(state.repeatCount);
   $('#repeatCountWrap').classList.toggle('hidden',state.repeatMode!=='horizontal');
   const available=scheduleTimes().filter(t=>t>=f.target.time).length;let hint='Прогноз будет сохранён только на один целевой тираж.';
   if(state.repeatMode==='vertical')hint=`↑ Эта же ставка заранее фиксируется ещё на <b>${addDays(f.target.date,1)} в ${f.target.time}</b>.`;
-  if(state.repeatMode==='horizontal')hint=`→ Ставка фиксируется на <b>${Math.min(state.repeatCount,available)} следующих тиража</b> текущего дня, начиная с ${f.target.time}.`;
+  if(state.repeatMode==='horizontal'){const count=Math.min(state.repeatCount,available),times=scheduleTimes().filter(t=>t>=f.target.time).slice(0,count);hint=`→ Ставка фиксируется на <b>${count} ${drawWord(count)}</b> текущего дня, включая целевой: <b>${times.join(', ')}</b>. Совет ИИ: <b>${f.horizontalRepeatCount} ${drawWord(f.horizontalRepeatCount)}</b>.`}
   $('#repeatHint').innerHTML=hint;
   const duplicate=state.predictions.some(p=>p.targetDate===f.target.date&&p.targetTime===f.target.time&&p.origin!==false);
   $('#saveForecastBtn').disabled=duplicate;$('#saveForecastBtn').textContent=duplicate?'🔒 ПРОГНОЗ НА ЭТОТ ТИРАЖ УЖЕ СОХРАНЁН':'🔒 СОХРАНИТЬ ПРОГНОЗ ДО ТИРАЖА';
@@ -162,7 +172,7 @@ function bind(){
   $('#rowLimit').onchange=e=>{state.rowLimit=+e.target.value;renderAll()};
   $('#positionMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;$('#positionMode').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));renderAll()});
   $('#resetBtn').onclick=()=>{state.activeDigits.clear();renderAll()};$('#refreshBtn').onclick=()=>location.reload();
-  $('#repeatMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.repeatMode=b.dataset.repeat;state.repeatTouched=true;renderLab()});
+  $('#repeatMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.repeatMode=b.dataset.repeat;renderLab()});
   $('#repeatCount').onchange=e=>{state.repeatCount=+e.target.value;renderLab()};
   $('#saveForecastBtn').onclick=saveForecast;$('#checkResultsBtn').onclick=()=>applyFacts(true);
   $('#archiveFilters').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.archiveFilter=b.dataset.filter;renderArchive()});
