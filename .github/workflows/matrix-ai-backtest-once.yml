@@ -1,0 +1,384 @@
+name: Matrix TOP-3 · AI Backtest Once
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-ai-backtest-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Honest walk-forward backtest
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const vm = require('vm');
+
+          const ctx = { window: {} };
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js', 'utf8'), ctx);
+
+          const seed = (ctx.window.TOP3_SEED || []).map(r => ({
+            id:+r[0], date:String(r[1]), time:String(r[2]),
+            a:+r[3], b:+r[4], c:+r[5]
+          }));
+
+          const liveJson = JSON.parse(fs.readFileSync('top3-live.json', 'utf8'));
+          const live = (liveJson.draws || []).map(r => ({
+            id:+r.id, date:String(r.date), time:String(r.time),
+            a:+r.a, b:+r.b, c:+r.c
+          }));
+
+          // Live wins over seed on duplicate draw id.
+          const byId = new Map();
+          for (const d of seed) byId.set(d.id, d);
+          for (const d of live) byId.set(d.id, d);
+          const draws = [...byId.values()].sort((a,b)=>a.id-b.id);
+
+          if (draws.length < 20) {
+            throw new Error(`Слишком мало тиражей для backtest: ${draws.length}`);
+          }
+
+          const toDay = s => {
+            const [d,m,y] = String(s).split('.').map(Number);
+            return Math.floor(Date.UTC(y < 100 ? 2000+y : y, m-1, d) / 86400000);
+          };
+          const vals = d => [d.a,d.b,d.c];
+          const mod10 = n => ((Number(n)%10)+10)%10;
+
+          // EXACT copy of the six formulas currently used in app.js.
+          function opsFromPair(older, newer) {
+            const x=vals(older), y=vals(newer);
+            const ops=[];
+            const add=(name,a,b,c)=>ops.push({name,out:[mod10(a),mod10(b),mod10(c)]});
+            add('перенос A2-B2-C2', y[0], y[1], y[2]);
+            add('A1+B1 | B2 | B1', x[0]+x[1], y[1], x[1]);
+            add('D-F-(A+B)', y[0], y[2], x[0]+x[1]);
+            add('разности', Math.abs(x[0]-y[1]), x[2], Math.abs(x[1]-y[1]));
+            add('суммы по зонам', x[0]+y[0], x[1]+y[1], x[2]+y[2]);
+            add('перекрёстные суммы', x[0]+y[1], x[1]+y[2], x[2]+y[0]);
+            return ops;
+          }
+
+          // EXACT current voting behavior: all formulas weight=1,
+          // tie is won by the smallest digit due to indexOf(max).
+          function currentVote(ops) {
+            const votes=[Array(10).fill(0),Array(10).fill(0),Array(10).fill(0)];
+            for (const o of ops) o.out.forEach((v,i)=>votes[i][v]++);
+            return votes.map(arr=>arr.indexOf(Math.max(...arr)));
+          }
+
+          function topDigit(list, key) {
+            if (!list.length) return null;
+            const c=Array(10).fill(0);
+            for (const d of list) c[d[key]]++;
+            let best=0;
+            for(let i=1;i<10;i++) if(c[i]>c[best]) best=i;
+            return best;
+          }
+
+          function hits(pred, target) {
+            if (!Array.isArray(pred) || pred.length !== 3) return null;
+            const t=vals(target);
+            return pred.map((v,i)=>v===t[i]?1:0);
+          }
+
+          function metric(rows, predKey) {
+            const rr=rows.filter(r=>Array.isArray(r[predKey]) && r[predKey].length===3);
+            if(!rr.length) return null;
+
+            let pos=[0,0,0], any=0, two=0, exact=0, totalHit=0;
+            let zeroStreak=0, maxZeroStreak=0;
+
+            for(const r of rr){
+              const h=hits(r[predKey], r.target);
+              const s=h[0]+h[1]+h[2];
+              h.forEach((v,i)=>pos[i]+=v);
+              totalHit+=s;
+              if(s>=1) any++;
+              if(s>=2) two++;
+              if(s===3) exact++;
+              if(s===0){
+                zeroStreak++;
+                maxZeroStreak=Math.max(maxZeroStreak,zeroStreak);
+              } else {
+                zeroStreak=0;
+              }
+            }
+
+            const pct=x=>(100*x/rr.length);
+            return {
+              n:rr.length,
+              A:pct(pos[0]), B:pct(pos[1]), C:pct(pos[2]),
+              avgPositions:totalHit/rr.length,
+              any:pct(any), two:pct(two), exact:pct(exact),
+              maxZeroStreak
+            };
+          }
+
+          // Candidate improvement: model transitions only within the target time.
+          function sameTimeTransitionPred(past, target) {
+            const s=past.filter(d=>d.time===target.time);
+            if(s.length<4) return null;
+            const last=s[s.length-1];
+            const out=[];
+
+            for(const key of ['a','b','c']){
+              const counts=Array(10).fill(0);
+
+              for(let j=0;j<s.length-1;j++){
+                if(s[j][key]===last[key]) counts[s[j+1][key]]++;
+              }
+
+              const max=Math.max(...counts);
+              if(max===0){
+                out.push(topDigit(s,key));
+                continue;
+              }
+
+              // Avoid the current small-digit tie bias:
+              // among equal candidates choose the most recent historical successor.
+              const tied=new Set(
+                counts.map((v,i)=>v===max?i:null).filter(v=>v!==null)
+              );
+              let pick=[...tied][0];
+
+              for(let j=s.length-2;j>=0;j--){
+                if(s[j][key]===last[key] && tied.has(s[j+1][key])){
+                  pick=s[j+1][key];
+                  break;
+                }
+              }
+              out.push(pick);
+            }
+            return out;
+          }
+
+          const formulaNames=opsFromPair(draws[0],draws[1]).map(o=>o.name);
+          const rows=[];
+
+          // Honest walk-forward:
+          // target draw i can use ONLY draws with id less than target id.
+          for(let i=2;i<draws.length;i++){
+            const target=draws[i];
+            const past=draws.slice(0,i);
+
+            const older=past[past.length-2];
+            const newer=past[past.length-1];
+
+            const opsAll=opsFromPair(older,newer);
+            const voteAll=currentVote(opsAll);
+
+            const same=past.filter(d=>d.time===target.time);
+            let opsSame=null, voteSame=null;
+            if(same.length>=2){
+              opsSame=opsFromPair(same[same.length-2],same[same.length-1]);
+              voteSame=currentVote(opsSame);
+            }
+
+            // Current UI's global A/B/C frequency block, 14-day historical window.
+            const latestPastDay=toDay(past[past.length-1].date);
+            const win=past.filter(d=>toDay(d.date)>=latestPastDay-13);
+            const freqGlobal=[
+              topDigit(win,'a'), topDigit(win,'b'), topDigit(win,'c')
+            ];
+
+            // Candidate improvement: position frequency only at the target time.
+            const winTime=win.filter(d=>d.time===target.time);
+            const freqSameTime=winTime.length ? [
+              topDigit(winTime,'a'), topDigit(winTime,'b'), topDigit(winTime,'c')
+            ] : null;
+
+            // Current UI "По времени": one hot digit from A+B+C mixed together.
+            let timeHot=null;
+            if(winTime.length){
+              const c=Array(10).fill(0);
+              for(const d of winTime){c[d.a]++;c[d.b]++;c[d.c]++;}
+              let best=0;
+              for(let k=1;k<10;k++) if(c[k]>c[best]) best=k;
+              timeHot=best;
+            }
+
+            const transitionSame=sameTimeTransitionPred(past,target);
+
+            const r={
+              target,
+              voteAll,
+              voteSame,
+              freqGlobal,
+              freqSameTime,
+              transitionSame,
+              timeHot
+            };
+
+            opsAll.forEach((o,k)=>r['op'+k]=o.out);
+            if(opsSame) opsSame.forEach((o,k)=>r['sameOp'+k]=o.out);
+            rows.push(r);
+          }
+
+          function fmtPct(x){return `${x.toFixed(2)}%`;}
+          function printMetric(label,m){
+            if(!m){
+              console.log(label.padEnd(34),'нет данных');
+              return;
+            }
+            console.log(
+              label.padEnd(34),
+              `n=${String(m.n).padStart(5)}`,
+              `A=${fmtPct(m.A).padStart(7)}`,
+              `B=${fmtPct(m.B).padStart(7)}`,
+              `C=${fmtPct(m.C).padStart(7)}`,
+              `ср.поз=${m.avgPositions.toFixed(3)}`,
+              `>=1=${fmtPct(m.any).padStart(7)}`,
+              `>=2=${fmtPct(m.two).padStart(7)}`,
+              `3/3=${fmtPct(m.exact).padStart(7)}`,
+              `max0=${m.maxZeroStreak}`
+            );
+          }
+
+          const report=[];
+
+          function capture(label,m){
+            if(!m) return {label,n:0};
+            return {label,...m};
+          }
+
+          console.log('='.repeat(128));
+          console.log('MATRIX TOP-3 · HONEST WALK-FORWARD BACKTEST');
+          console.log(`Архив: ${draws.length} уникальных тиражей · №${draws[0].id} → №${draws[draws.length-1].id}`);
+          console.log('Для каждого исторического прогноза использованы ТОЛЬКО более ранние тиражи.');
+          console.log('Случайная база: позиция=10.00%; среднее совпавших позиций=0.300; >=1=27.10%; >=2=2.80%; 3/3=0.10%.');
+          console.log('='.repeat(128));
+
+          for(const N of [50,100,500,rows.length]){
+            const sample=N===rows.length ? rows : rows.slice(-Math.min(N,rows.length));
+            const windowName=N===rows.length?'ВСЯ ИСТОРИЯ':`ПОСЛЕДНИЕ ${N}`;
+            console.log(`\n--- ${windowName} ---`);
+
+            const methods=[
+              ['Текущие 6 формул (ВСЕ)', 'voteAll'],
+              ['6 формул того же времени', 'voteSame'],
+              ['Частота A/B/C, 14 дней', 'freqGlobal'],
+              ['Частота A/B/C по времени', 'freqSameTime'],
+              ['Переходы по тому же времени', 'transitionSame']
+            ];
+
+            const block={window:windowName,methods:[]};
+            for(const [label,key] of methods){
+              const m=metric(sample,key);
+              printMetric(label,m);
+              block.methods.push(capture(label,m));
+            }
+            report.push(block);
+          }
+
+          console.log('\n--- ТЕКУЩИЕ 6 ФОРМУЛ ПО ОТДЕЛЬНОСТИ · ВСЯ ИСТОРИЯ ---');
+          const individualOverall=[];
+          formulaNames.forEach((name,k)=>{
+            const m=metric(rows,'op'+k);
+            printMetric(`${k+1}. ${name}`,m);
+            individualOverall.push(capture(name,m));
+          });
+
+          console.log('\n--- ТЕ ЖЕ 6 ФОРМУЛ НА ПРЕДЫДУЩИХ ТИРАЖАХ ТОГО ЖЕ ВРЕМЕНИ ---');
+          const individualSame=[];
+          formulaNames.forEach((name,k)=>{
+            const m=metric(rows,'sameOp'+k);
+            printMetric(`${k+1}. ${name}`,m);
+            individualSame.push(capture(name,m));
+          });
+
+          console.log('\n--- ПО КАЖДОМУ ВРЕМЕНИ · ПОСЛЕДНИЕ ДО 500 ПРОГНОЗОВ ---');
+          const byTimeReport=[];
+          const times=[...new Set(draws.map(d=>d.time))].sort();
+
+          for(const t of times){
+            const tr=rows.filter(r=>r.target.time===t).slice(-500);
+            console.log(`\n${t}  n=${tr.length}`);
+            const methods=[
+              ['текущие формулы ВСЕ','voteAll'],
+              ['формулы того же времени','voteSame'],
+              ['частота того же времени','freqSameTime'],
+              ['переходы того же времени','transitionSame']
+            ];
+            const item={time:t,n:tr.length,methods:[]};
+            for(const [label,key] of methods){
+              const m=metric(tr,key);
+              printMetric('  '+label,m);
+              item.methods.push(capture(label,m));
+            }
+            byTimeReport.push(item);
+          }
+
+          console.log('\n--- ТЕКУЩИЙ БЛОК «ПО ВРЕМЕНИ» ИЗ UI ---');
+          const uiHot=[];
+          for(const N of [50,100,500]){
+            const sample=rows.slice(-Math.min(N,rows.length)).filter(r=>r.timeHot!==null);
+            let any=0, totalOccurrences=0;
+            for(const r of sample){
+              const t=vals(r.target);
+              const n=t.filter(v=>v===r.timeHot).length;
+              if(n>0) any++;
+              totalOccurrences+=n;
+            }
+            const item={
+              window:N,
+              n:sample.length,
+              anyPercent:100*any/sample.length,
+              avgOccurrences:totalOccurrences/sample.length
+            };
+            uiHot.push(item);
+            console.log(
+              `Последние ${N}: n=${sample.length}, выбранная горячая цифра встретилась хотя бы где-то в A/B/C = ${item.anyPercent.toFixed(2)}%;`,
+              `среднее число появлений этой цифры в тираж = ${item.avgOccurrences.toFixed(3)}. Это НЕ позиционный прогноз A/B/C.`
+            );
+          }
+
+          const result={
+            generatedAt:new Date().toISOString(),
+            archive:{
+              count:draws.length,
+              firstId:draws[0].id,
+              lastId:draws[draws.length-1].id
+            },
+            randomBaseline:{
+              perPositionPercent:10,
+              avgPositions:0.3,
+              atLeastOnePercent:27.1,
+              atLeastTwoPercent:2.8,
+              exact3Percent:0.1
+            },
+            windows:report,
+            individualOverall,
+            individualSameTime:individualSame,
+            byTime:byTimeReport,
+            currentUiTimeHot:uiHot
+          };
+
+          fs.writeFileSync('matrix-ai-backtest-report.json',JSON.stringify(result,null,2));
+          console.log('\nBACKTEST DONE');
+          NODE
+
+      - name: Upload backtest report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-ai-backtest-report
+          path: matrix-ai-backtest-report.json
+          if-no-files-found: error
