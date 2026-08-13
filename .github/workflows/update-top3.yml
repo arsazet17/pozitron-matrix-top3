@@ -19,6 +19,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -35,14 +37,44 @@ jobs:
           STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
         run: node update-top3-stoloto-oauth.mjs
 
-      - name: Commit verified live data
+      - name: Commit verified live data safely
+        env:
+          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
+          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
+        shell: bash
         run: |
-          if git diff --quiet -- top3-live.json; then
-            echo "Нет новых подтверждённых тиражей"
-            exit 0
-          fi
+          set -e
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add top3-live.json
-          git commit -m "Update TOP-3 from verified Stoloto OAuth"
-          git push
+
+          for attempt in 1 2 3; do
+            echo "=== SAFE SAVE ATTEMPT $attempt/3 ==="
+            git fetch origin main
+
+            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+              echo "main changed while updater was running — recomputing from fresh main"
+              git reset --hard origin/main
+              node update-top3-stoloto-oauth.mjs
+            fi
+
+            if git diff --quiet -- top3-live.json; then
+              echo "Нет новых подтверждённых тиражей"
+              exit 0
+            fi
+
+            git add top3-live.json
+            git commit -m "Update TOP-3 from verified Stoloto OAuth"
+
+            if git push origin HEAD:main; then
+              echo "TOP-3 update saved"
+              exit 0
+            fi
+
+            echo "main changed during push — retrying from latest main"
+            git fetch origin main
+            git reset --hard origin/main
+            node update-top3-stoloto-oauth.mjs
+          done
+
+          echo "Не удалось безопасно сохранить после 3 попыток"
+          exit 1
