@@ -1,0 +1,438 @@
+name: Matrix TOP-3 · Center 8 AI Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-center8-ai-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  center8:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Center 8 rigid vs live backtest
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const vm=require('vm');
+
+          const TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
+          const TI=Object.fromEntries(TIMES.map((t,i)=>[t,i]));
+          const STRONG=new Set(['02:40','04:40','11:40','13:40','16:25']);
+
+          const CORNERS=[9,3,6];
+          const CORNER_XY={9:[0,-2.10],3:[-1.65,2.10],6:[1.65,2.10]};
+
+          // seat0 = center; seat1..6 clockwise ring.
+          // 8 takes the old center. 0 takes the old 8 seat.
+          const INITIAL=[8,1,2,5,0,7,4];
+          const INNER=new Set([0,1,2,4,5,7,8]);
+          const SEAT_XY=[
+            [0,0],
+            [-0.70,-1.00],[0.70,-1.00],[1.22,0.00],
+            [0.70,1.00],[-0.70,1.00],[-1.22,0.00]
+          ];
+
+          const WARM=45;
+          const HOLD=0.30;
+
+          function dateKey(s){
+            const [d,m,y]=String(s).split('.').map(Number);
+            return `${2000+y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          }
+          function seatOf(st,d){return CORNERS.includes(d)?null:st.seats.indexOf(d);}
+          function xy(st,d){return CORNERS.includes(d)?CORNER_XY[d]:SEAT_XY[seatOf(st,d)];}
+          function mod6(n){return ((n%6)+6)%6;}
+          function rotateRing(st,k){
+            const ring=st.seats.slice(1),out=Array(6),z=mod6(k);
+            for(let i=0;i<6;i++)out[(i+z)%6]=ring[i];
+            st.seats=[st.seats[0],...out];
+          }
+          function swap(st,a,b){
+            const ia=seatOf(st,a),ib=seatOf(st,b);
+            if(ia===null||ib===null||ia<0||ib<0)return;
+            [st.seats[ia],st.seats[ib]]=[st.seats[ib],st.seats[ia]];
+          }
+          function angleSector(p){
+            if(p[0]===0&&p[1]===0)return 0;
+            let a=Math.atan2(p[0],-p[1]);if(a<0)a+=2*Math.PI;
+            return Math.round(a/(Math.PI/6))%12;
+          }
+          function nearestCorner(st,d){
+            const p=xy(st,d);let best=9,bd=1e9;
+            for(const c of CORNERS){
+              const q=CORNER_XY[c],dd=Math.hypot(p[0]-q[0],p[1]-q[1]);
+              if(dd<bd){bd=dd;best=c;}
+            }
+            return best;
+          }
+          function orientation(st,c){
+            const p=c.map(d=>xy(st,d)),[a,b,z]=p;
+            return ((b[0]-a[0])*(z[1]-a[1])-(b[1]-a[1])*(z[0]-a[0]))>=0?1:-1;
+          }
+          function cornerTorque(st,c){
+            let s=0;
+            c.forEach((d,i)=>{
+              const sec=angleSector(xy(st,d));
+              const cs=angleSector(CORNER_XY[nearestCorner(st,d)]);
+              let delta=((sec-cs+18)%12)-6;
+              s+=(i+1)*delta;
+            });
+            return s;
+          }
+          function selectedInner(c){
+            const out=[];
+            for(const d of c)if(INNER.has(d)&&!out.includes(d))out.push(d);
+            return out;
+          }
+          function centroid(st,c){
+            const p=c.map(d=>xy(st,d));
+            return [p.reduce((s,q)=>s+q[0],0)/3,p.reduce((s,q)=>s+q[1],0)/3];
+          }
+          function farSeat(point){
+            let best=1,bd=-1;
+            for(let i=1;i<=6;i++){
+              const p=SEAT_XY[i],dd=Math.hypot(p[0]-point[0],p[1]-point[1]);
+              if(dd>bd){bd=dd;best=i;}
+            }
+            return best;
+          }
+
+          /*
+            CENTER8:
+            rigid8: 8 is forced back to center after every draw.
+            live8: 8 may yield center according to submode.
+          */
+          const CENTER_MODES=['rigid8','live8'];
+          const LIVE8_MOVES=['stay','swapA','swapB','swapC','yieldCentroid','oppositeAnchor'];
+
+          function force8Center(st){
+            const i=seatOf(st,8);
+            if(i!==0){
+              const d=st.seats[0];
+              swap(st,8,d);
+            }
+          }
+          function move8Live(st,c,mode){
+            if(mode==='stay')return;
+            if(mode==='swapA'||mode==='swapB'||mode==='swapC'){
+              const idx={swapA:0,swapB:1,swapC:2}[mode];
+              const d=c[idx];
+              if(INNER.has(d)&&d!==8)swap(st,8,d);
+              return;
+            }
+            let target=0;
+            if(mode==='yieldCentroid'){
+              target=farSeat(centroid(st,c));
+            }else if(mode==='oppositeAnchor'){
+              const cnt={9:0,3:0,6:0};
+              for(const d of c)cnt[nearestCorner(st,d)]++;
+              const anchor=+Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0][0];
+              const p={9:[0,1.2],3:[1.05,-0.55],6:[-1.05,-0.55]}[anchor];
+              target=farSeat([-p[0],-p[1]]);
+            }
+            if(target>0 && seatOf(st,8)!==target){
+              const d=st.seats[target];
+              swap(st,8,d);
+            }
+          }
+
+          function rebuild(st,c,mode){
+            const ds=selectedInner(c).filter(d=>d!==8);
+            if(ds.length<2)return;
+            if(mode==='cycle'){
+              const slots=ds.map(d=>seatOf(st,d));
+              for(let i=0;i<ds.length;i++)st.seats[slots[(i+1)%ds.length]]=ds[i];
+              return;
+            }
+            const slots=ds.map(d=>seatOf(st,d)).sort((a,b)=>a-b);
+            let ord=[...ds];
+            if(mode==='reverse')ord.reverse();
+            else if(mode==='cornerPull'){
+              const rank={9:0,3:1,6:2};
+              ord.sort((a,b)=>rank[nearestCorner(st,a)]-rank[nearestCorner(st,b)] || angleSector(xy(st,a))-angleSector(xy(st,b)));
+            }else if(mode==='angleOrder'){
+              ord.sort((a,b)=>angleSector(xy(st,a))-angleSector(xy(st,b)));
+            }
+            for(let i=0;i<slots.length;i++)st.seats[slots[i]]=ord[i];
+          }
+
+          function geometryStep(st,c){
+            const p=c.map(d=>xy(st,d));let per=0;
+            for(let i=0;i<3;i++){
+              const q=p[i],r=p[(i+1)%3];
+              per+=Math.hypot(q[0]-r[0],q[1]-r[1]);
+            }
+            return mod6(Math.round(per*10));
+          }
+          function seatSum(st,c){
+            return mod6(c.reduce((s,d)=>s+(CORNERS.includes(d)?({9:5,3:2,6:4}[d]):seatOf(st,d)),0));
+          }
+          function angleStep(st,c){
+            const v=c.map(d=>angleSector(xy(st,d)));
+            return mod6(Math.abs(v[0]-v[1])+Math.abs(v[1]-v[2])+Math.abs(v[0]-v[2]));
+          }
+          function cornerStep(st,c){return mod6(Math.abs(cornerTorque(st,c)));}
+
+          const STEPS={
+            sum:(s,c)=>mod6(c[0]+c[1]+c[2]),
+            weighted:(s,c)=>mod6(c[0]+2*c[1]+3*c[2]),
+            spread:(s,c)=>mod6(Math.abs(c[0]-c[1])+Math.abs(c[1]-c[2])+Math.abs(c[0]-c[2])),
+            geometry:(s,c)=>geometryStep(s,c),
+            seatSum:(s,c)=>seatSum(s,c),
+            angle:(s,c)=>angleStep(s,c),
+            corner:(s,c)=>cornerStep(s,c)
+          };
+          const DIRS={
+            cw:(s,c)=>1,
+            parity:(s,c)=>((c[0]+c[1]+c[2])%2===0?1:-1),
+            orientation:(s,c)=>orientation(s,c),
+            cornerTorque:(s,c)=>cornerTorque(s,c)>=0?1:-1
+          };
+          const REBUILDS=['cycle','reverse','cornerPull','angleOrder'];
+
+          function update(st,c,law){
+            let step=STEPS[law.step](st,c);if(step===0)step=6;
+            const dir=DIRS[law.dir](st,c);
+            rotateRing(st,dir*step);
+            rebuild(st,c,law.rebuild);
+            if(law.centerMode==='rigid8')force8Center(st);
+            else move8Live(st,c,law.liveMove);
+            return {step,dir,seats:[...st.seats]};
+          }
+
+          function anchorSig(st,c){return c.map(d=>CORNERS.includes(d)?d:nearestCorner(st,d)).join('');}
+          function shapeSig(st,c){
+            const p=c.map(d=>xy(st,d)),ds=[];
+            for(const [i,j] of [[0,1],[1,2],[0,2]]){
+              const d=Math.hypot(p[i][0]-p[j][0],p[i][1]-p[j][1]);
+              ds.push(d<1?'N':d<1.9?'M':'F');
+            }
+            return `${ds.sort().join('')}:${orientation(st,c)>0?'CW':'CCW'}`;
+          }
+          function centerSig(st){return seatOf(st,8)===0?'8C':`8R${seatOf(st,8)}`;}
+
+          // canonical state under 6 rotations and mirror.
+          // Corners are not relabeled here; this only normalizes the 6-seat inner ring.
+          function canonicalRing(st){
+            const center=st.seats[0],ring=st.seats.slice(1);
+            const forms=[];
+            for(let k=0;k<6;k++){
+              const r=[];
+              for(let i=0;i<6;i++)r.push(ring[(i+k)%6]);
+              forms.push(`${center}|${r.join('')}`);
+              forms.push(`${center}|${[r[0],r[5],r[4],r[3],r[2],r[1]].join('')}`);
+            }
+            return forms.sort()[0];
+          }
+          function sig(st,c,ctx){
+            const exactBoard=st.seats.join('');
+            const canon=canonicalRing(st);
+            const a=anchorSig(st,c),sh=shapeSig(st,c),cs=centerSig(st);
+            return {
+              exact:`${ctx}|${exactBoard}|${cs}|${a}|${sh}|${c.join('')}`,
+              sym:`${ctx}|${canon}|${cs}|${sh}`,
+              medium:`${ctx}|${cs}|${a}|${sh}`,
+              coarse:`${ctx}|${cs}|${a}`,
+              context:ctx,
+              global:'*'
+            };
+          }
+
+          function empty(){return {n:0,pos:[Array(10).fill(0),Array(10).fill(0),Array(10).fill(0)]};}
+          function add(map,k,t){
+            if(!map.has(k))map.set(k,empty());
+            const s=map.get(k);s.n++;
+            s.pos[0][t.a]++;s.pos[1][t.b]++;s.pos[2][t.c]++;
+          }
+          function dist(s,p,a=1){
+            const x=Array(10).fill(a);
+            if(s)for(let d=0;d<10;d++)x[d]+=s.pos[p][d];
+            const z=x.reduce((q,w)=>q+w,0);return x.map(v=>v/z);
+          }
+          function blend(items){
+            const o=Array(10).fill(0);let ws=0;
+            for(const [a,w] of items){if(!w)continue;ws+=w;for(let d=0;d<10;d++)o[d]+=a[d]*w;}
+            return ws?o.map(x=>x/ws):Array(10).fill(.1);
+          }
+          function pred(map,s){
+            const levels=[
+              ['exact',16,.3],['sym',14,.65],['medium',12,1.0],
+              ['coarse',9,1.35],['context',6,1.7],['global',1,2.0]
+            ];
+            const out=[];
+            for(let p=0;p<3;p++){
+              const items=[];
+              for(const [k,min,w] of levels){
+                const q=map.get(s[k]);if(q&&q.n>=min)items.push([dist(q,p),w*Math.log1p(q.n)]);
+              }
+              out.push(blend(items));
+            }
+            return out;
+          }
+          function topK(a,k){return a.map((v,i)=>[i,v]).sort((x,y)=>y[1]-x[1]||x[0]-y[0]).slice(0,k).map(x=>x[0]);}
+          function M(){return {n:0,t1:[0,0,0],t3:[0,0,0],ab:0,bc:0,x3:0};}
+          function score(m,p,t){
+            const act=[t.a,t.b,t.c],x=p.map(a=>topK(a,1)[0]);m.n++;
+            for(let i=0;i<3;i++){if(x[i]===act[i])m.t1[i]++;if(topK(p[i],3).includes(act[i]))m.t3[i]++;}
+            if(x[0]===act[0]&&x[1]===act[1])m.ab++;
+            if(x[1]===act[1]&&x[2]===act[2])m.bc++;
+            if(x[0]===act[0]&&x[1]===act[1]&&x[2]===act[2])m.x3++;
+          }
+          function avg1(m){return m.n?(m.t1[0]+m.t1[1]+m.t1[2])/(3*m.n):0;}
+          function avg3(m){return m.n?(m.t3[0]+m.t3[1]+m.t3[2])/(3*m.n):0;}
+          function merit(m){
+            if(!m.n)return -99;
+            const pair=((m.ab+m.bc)/(2*m.n))/0.01;
+            return .64*(avg1(m)/.10)+.22*(avg3(m)/.30)+.14*Math.min(pair,2.5);
+          }
+          function pct(x,n){return n?(100*x/n).toFixed(2)+'%':'0.00%';}
+
+          const ctx={window:{}};
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js','utf8'),ctx);
+          const seed=(ctx.window.TOP3_SEED||[]).map(r=>({id:+r[0],date:String(r[1]),time:String(r[2]),a:+r[3],b:+r[4],c:+r[5]}));
+          const lj=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
+          const live=(lj.draws||[]).map(r=>({id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c}));
+          const byId=new Map();for(const d of seed)byId.set(d.id,d);for(const d of live)byId.set(d.id,d);
+          const draws=[...byId.values()].filter(d=>TI[d.time]!==undefined).sort((a,b)=>a.id-b.id);
+          if(draws.length<5000)throw new Error('Archive too small');
+
+          const byTime=new Map(TIMES.map(t=>[t,[]]));
+          for(const d of draws)byTime.get(d.time).push(d);
+
+          const laws=[];
+          for(const step of Object.keys(STEPS))
+           for(const dir of Object.keys(DIRS))
+            for(const rebuild of REBUILDS){
+              laws.push({step,dir,rebuild,centerMode:'rigid8',liveMove:'-'});
+              for(const liveMove of LIVE8_MOVES)
+                laws.push({step,dir,rebuild,centerMode:'live8',liveMove});
+            }
+
+          function runV(time,law,trace=false){
+            const list=byTime.get(time),split=Math.floor(list.length*(1-HOLD));
+            const st={seats:[...INITIAL]},map=new Map();let prev=null;
+            const tr=M(),te=M(),all=M(),rows=[];
+            for(let i=0;i<list.length;i++){
+              const d=list[i];
+              if(prev){
+                const p=pred(map,prev);
+                if(i>=WARM){score(all,p,d);if(i<split)score(tr,p,d);else score(te,p,d);}
+                for(const k of Object.values(prev))add(map,k,d);
+              }
+              const c=[d.a,d.b,d.c],mv=update(st,c,law);
+              prev=sig(st,c,`V:${time}`);
+              if(trace)rows.push({
+                id:d.id,date:d.date,combo:c.join(''),step:mv.step,dir:mv.dir>0?'CW':'CCW',
+                seats:[...st.seats],center8:seatOf(st,8),canon:canonicalRing(st)
+              });
+            }
+            return {
+              time,law,train:tr,test:te,all,trainMerit:merit(tr),testMerit:merit(te),
+              finalSeats:[...st.seats],
+              next:pred(map,prev).map(a=>({top1:topK(a,1)[0],top3:topK(a,3)})),
+              trace:trace?rows.slice(-15):undefined
+            };
+          }
+
+          const best={};
+          const comparison={};
+          for(const t of TIMES){
+            let candidates=laws;
+            if(!STRONG.has(t)){
+              candidates=laws.filter(x=>['sum','seatSum','corner'].includes(x.step)&&['cw','cornerTorque'].includes(x.dir));
+            }
+            const rigid=candidates.filter(x=>x.centerMode==='rigid8').map(l=>runV(t,l,false)).sort((a,b)=>b.trainMerit-a.trainMerit);
+            const live=candidates.filter(x=>x.centerMode==='live8').map(l=>runV(t,l,false)).sort((a,b)=>b.trainMerit-a.trainMerit);
+            comparison[t]={
+              rigid:runV(t,rigid[0].law,true),
+              live:runV(t,live[0].law,true)
+            };
+            best[t]=comparison[t].rigid.trainMerit>=comparison[t].live.trainMerit?comparison[t].rigid:comparison[t].live;
+          }
+
+          // Symmetry-normalized repeated states on strongest times.
+          const repeats={};
+          for(const t of STRONG){
+            const r=best[t],list=byTime.get(t),st={seats:[...INITIAL]},seen=new Map();
+            for(let i=0;i<list.length-1;i++){
+              const d=list[i],c=[d.a,d.b,d.c];
+              update(st,c,r.law);
+              const key=`${canonicalRing(st)}|${centerSig(st)}|${shapeSig(st,c)}`;
+              const nxt=list[i+1];
+              if(!seen.has(key))seen.set(key,[]);
+              seen.get(key).push({from:d.id,combo:c.join(''),next:nxt.id,nextCombo:`${nxt.a}${nxt.b}${nxt.c}`});
+            }
+            const out=[];
+            for(const [key,arr] of seen){
+              if(arr.length<3)continue;
+              const cnt=new Map();
+              for(const e of arr)cnt.set(e.nextCombo,(cnt.get(e.nextCombo)||0)+1);
+              const top=[...cnt.entries()].sort((a,b)=>b[1]-a[1])[0];
+              out.push({key,n:arr.length,topNext:top[0],topCount:top[1],rate:top[1]/arr.length,examples:arr.slice(-6)});
+            }
+            repeats[t]=out.sort((a,b)=>b.rate-a.rate||b.n-a.n).slice(0,30);
+          }
+
+          function line(label,m){
+            return `${label.padEnd(10)} n=${String(m.n).padStart(4)} A=${pct(m.t1[0],m.n)} B=${pct(m.t1[1],m.n)} C=${pct(m.t1[2],m.n)} TOP3=${pct(m.t3.reduce((a,b)=>a+b,0),3*m.n)} AB=${pct(m.ab,m.n)} BC=${pct(m.bc,m.n)} 3/3=${pct(m.x3,m.n)}`;
+          }
+
+          console.log('='.repeat(180));
+          console.log('MATRIX TOP-3 · CENTER 8 AI · RIGID 8 vs LIVE 8');
+          console.log(`Archive=${draws.length}; laws=${laws.length}; center 8 initial board=${INITIAL.join('')}`);
+          console.log('3/6/9 fixed corners. 0 is ordinary inner digit. Symmetry repeats normalize rotations and mirror.');
+          console.log('='.repeat(180));
+
+          for(const t of TIMES){
+            const c=comparison[t];
+            console.log(`\n--- ${t} ---`);
+            console.log(`RIGID law=${c.rigid.law.step}/${c.rigid.law.dir}/${c.rigid.law.rebuild}`);
+            console.log(line('RIGID TEST',c.rigid.test));
+            console.log(`RIGID NEXT ${c.rigid.next.map(x=>x.top1).join('')} seats=${c.rigid.finalSeats.join('')} center8=${c.rigid.finalSeats.indexOf(8)}`);
+            console.log(`LIVE  law=${c.live.law.step}/${c.live.law.dir}/${c.live.law.rebuild}/${c.live.law.liveMove}`);
+            console.log(line('LIVE TEST',c.live.test));
+            console.log(`LIVE NEXT  ${c.live.next.map(x=>x.top1).join('')} seats=${c.live.finalSeats.join('')} center8=${c.live.finalSeats.indexOf(8)}`);
+            console.log(`SELECTED BY TRAIN: ${best[t].law.centerMode}${best[t].law.centerMode==='live8'?'/'+best[t].law.liveMove:''}`);
+            if(repeats[t]){
+              console.log(`Symmetry repeated groups >=3: ${repeats[t].length}`);
+              for(const x of repeats[t].slice(0,5))console.log(`  n=${x.n} topNext=${x.topNext} ${pct(x.topCount,x.n)} key=${x.key}`);
+            }
+          }
+
+          const report={
+            generatedAt:new Date().toISOString(),
+            algorithm:'Center8 AI rigid vs live',
+            archive:{count:draws.length,times:TIMES},
+            board:{corners:CORNERS,initial:INITIAL,centerDigit:8,inner:[0,1,2,4,5,7,8]},
+            lawSpace:{count:laws.length,steps:Object.keys(STEPS),dirs:Object.keys(DIRS),rebuilds:REBUILDS,liveMoves:LIVE8_MOVES},
+            comparison,
+            selected:best,
+            symmetryRepeats:repeats
+          };
+          fs.writeFileSync('matrix-center8-ai-report.json',JSON.stringify(report,null,2));
+          console.log('\nCENTER8 AI REPORT DONE');
+          NODE
+
+      - name: Upload Center 8 report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-center8-ai-report
+          path: matrix-center8-ai-report.json
+          if-no-files-found: error
