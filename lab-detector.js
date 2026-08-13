@@ -173,7 +173,7 @@
 
   function detectorSnapshot(f){
     return {
-      version:'STATE DETECTOR v1.2.8',
+      version:'STATE DETECTOR v1.2.9',
       target:{...f.target},
       forecast:[...f.picks],
       bet:f.bet,
@@ -335,7 +335,7 @@
   const _renderArchivePersisted=renderArchive;
   renderArchive=function(){return _renderArchivePersisted()};
 
-  /* v1.2.8 — IndexedDB-only persistent archive + clean mobile archive.
+  /* v1.2.9 — IndexedDB-only archive + collapsible forecast packages.
      Keep the full detector snapshot frozen in storage, but never dump it into the archive UI.
      The archive shows only: target forecast, AI bet, fact, and result/payout. */
   const detectorArchiveStyle=document.createElement('style');
@@ -356,6 +356,18 @@
     .archive-result-pending .archive-result-main{color:#ffd37d}
     .archive-result-skip .archive-result-main{color:#b8c5ce}
     .archive-fact-empty{font-size:18px;font-weight:800;color:#9eb0bf}
+    .archive-clean-digit.hit{color:#78f39a;border-color:rgba(70,230,120,.62);background:rgba(20,105,55,.40)}
+    .archive-clean-digit.miss{color:#ff8f8f;border-color:rgba(255,90,90,.55);background:rgba(105,28,35,.38)}
+    .archive-package{border:1px solid rgba(74,198,255,.24);border-radius:16px;background:rgba(4,18,31,.50);overflow:hidden;margin:0 0 12px}
+    .archive-package>summary{list-style:none;cursor:pointer;padding:15px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(8,35,57,.64)}
+    .archive-package>summary::-webkit-details-marker{display:none}
+    .archive-package-title{font-size:16px;font-weight:950;color:#fff}
+    .archive-package-meta{margin-top:4px;font-size:12px;color:#9eb0bf;font-weight:700}
+    .archive-package-arrow{font-size:20px;color:#71d7ff;transition:transform .18s ease}
+    .archive-package[open] .archive-package-arrow{transform:rotate(180deg)}
+    .archive-package-body{padding:12px}
+    .archive-package-body .prediction-card{margin:0 0 10px}
+    .archive-package-body .prediction-card:last-child{margin-bottom:0}
     @media(max-width:700px){
       .archive-clean-grid{grid-template-columns:1fr}
       .archive-clean-digit{min-width:46px;height:46px;font-size:27px}
@@ -365,9 +377,30 @@
   `;
   document.head.appendChild(detectorArchiveStyle);
 
-  function archiveDigits(values, extraClass=''){
+  function positionalClasses(forecast,fact){
+    const f=Array.isArray(forecast)?forecast:[],a=Array.isArray(fact)?fact:[];
+    return f.map((n,i)=>a.length?(n===a[i]?'hit':'miss'):'');
+  }
+
+  function unorderedClasses(values,fact){
+    const vals=Array.isArray(values)?values:[],pool=Array.isArray(fact)?[...fact]:[];
+    if(!pool.length)return vals.map(()=> '');
+    return vals.map(n=>{const i=pool.indexOf(n);if(i<0)return'miss';pool.splice(i,1);return'hit'});
+  }
+
+  function aiClasses(p){
+    if(!p.fact||p.bet==='skip')return (p.stakeDigits||[]).map(()=> '');
+    const vals=Array.isArray(p.stakeDigits)?p.stakeDigits:[];
+    if(p.bet==='first2')return vals.map((n,i)=>n===p.fact[i]?'hit':'miss');
+    if(p.bet==='last2')return vals.map((n,i)=>n===p.fact[i+1]?'hit':'miss');
+    if(p.bet==='exact1')return vals.map((n,i)=>{const pos=(p.stakePositions||[])[i];return Number.isInteger(pos)&&n===p.fact[pos]?'hit':'miss'});
+    if(p.bet==='exact3')return vals.map((n,i)=>n===p.fact[i]?'hit':'miss');
+    return unorderedClasses(vals,p.fact);
+  }
+
+  function archiveDigits(values, classes=[]){
     const arr=Array.isArray(values)?values:[];
-    return arr.length?arr.map(n=>`<span class="archive-clean-digit ${extraClass}">${esc(n)}</span>`).join(''):'<span class="archive-fact-empty">—</span>';
+    return arr.length?arr.map((n,i)=>`<span class="archive-clean-digit ${classes[i]||''}">${esc(n)}</span>`).join(''):'<span class="archive-fact-empty">—</span>';
   }
 
   function archiveResult(p){
@@ -386,15 +419,16 @@
   }
 
   predictionCard=function(p){
-    const targetDigits=archiveDigits(p.forecast);
+    const targetClasses=positionalClasses(p.forecast,p.fact);
+    const targetDigits=archiveDigits(p.forecast,targetClasses);
     const stakeDigits=p.bet==='skip'?[]:(Array.isArray(p.stakeDigits)?p.stakeDigits:[]);
-    const aiDigits=p.bet==='skip'?'<span class="archive-fact-empty">СТАВКИ НЕТ</span>':archiveDigits(stakeDigits);
+    const aiDigits=p.bet==='skip'?'<span class="archive-fact-empty">СТАВКИ НЕТ</span>':archiveDigits(stakeDigits,aiClasses(p));
     const factDigits=archiveDigits(p.fact||[]);
     const betName=esc(p.betLabel||betLabel(p.bet)||'—');
     return `<article class="prediction-card ${esc(p.resultStatus||'pending')}">
       <div class="pred-head">
         <div><div class="pred-title">${esc(p.targetTime)} · ${esc(p.targetDate)}${p.targetDrawId?` · №${esc(p.targetDrawId)}`:''}</div></div>
-        <div class="pred-lock">🔒 ${new Date(p.createdAt).toLocaleString('ru-RU')}</div>
+        <div class="pred-lock">🔒</div>
       </div>
       <div class="archive-clean-grid">
         <div class="archive-clean-box">
@@ -417,4 +451,40 @@
       </div>
     </article>`;
   };
+
+  function packageTime(iso){
+    const d=new Date(iso);if(Number.isNaN(d.getTime()))return'—';
+    return d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
+  }
+
+  function packageCard(rows){
+    const sorted=[...rows].sort((a,b)=>(a.repeatIndex||1)-(b.repeatIndex||1));
+    const first=sorted[0]||{};
+    const count=sorted.length;
+    const date=esc(first.targetDate||'—');
+    const made=packageTime(first.createdAt);
+    const start=sorted[0]?.targetTime||'—',finish=sorted[sorted.length-1]?.targetTime||'—';
+    const range=count>1?`${start}–${finish}`:start;
+    return `<details class="archive-package">
+      <summary>
+        <div>
+          <div class="archive-package-title">${date} · ПАКЕТ ${count} ${drawWord(count).toUpperCase()}</div>
+          <div class="archive-package-meta">Прогноз зафиксирован: ${esc(made)} · ${esc(range)}</div>
+        </div>
+        <span class="archive-package-arrow">⌄</span>
+      </summary>
+      <div class="archive-package-body">${sorted.map(predictionCard).join('')}</div>
+    </details>`;
+  }
+
+  renderArchive=function(){
+    if(!$('#labArchive'))return;
+    let list=[...state.predictions].sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)||(b.repeatIndex||1)-(a.repeatIndex||1));
+    if(state.archiveFilter!=='all')list=list.filter(p=>p.resultStatus===state.archiveFilter);
+    const groups=new Map();
+    for(const p of list){const key=p.originId||p.id;if(!groups.has(key))groups.set(key,[]);groups.get(key).push(p)}
+    $('#labArchive').innerHTML=groups.size?[...groups.values()].map(packageCard).join(''):'<div class="archive-empty">В этом фильтре записей пока нет.</div>';
+    $$('#archiveFilters button').forEach(b=>b.classList.toggle('active',b.dataset.filter===state.archiveFilter));
+  };
+
 })();
