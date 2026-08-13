@@ -1,0 +1,521 @@
+name: Matrix TOP-3 · Live Zero AI Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-live-zero-ai-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  live-zero:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Live Zero Rotor AI backtest
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const vm=require('vm');
+
+          const TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
+          const STRONG_TIMES=new Set(['02:40','11:40','13:40','16:25']);
+          const TI=Object.fromEntries(TIMES.map((t,i)=>[t,i]));
+          const CORNERS=[9,3,6];
+
+          // 7 live inner seats:
+          // 0=center, 1..6 clockwise ring.
+          const SEAT_XY=[
+            [0,0],
+            [-0.70,-1.00],[0.70,-1.00],[1.22,0.00],
+            [0.70,1.00],[-0.70,1.00],[-1.22,0.00]
+          ];
+          const CORNER_XY={9:[0,-2.10],3:[-1.65,2.10],6:[1.65,2.10]};
+          const INITIAL=[0,1,2,5,8,7,4]; // seat0=center then ring clockwise
+          const INNER=new Set([0,1,2,4,5,7,8]);
+
+          const WARM_V=45;
+          const WARM_H=300;
+          const HOLDOUT=0.30;
+
+          function dateKey(s){
+            const [d,m,y]=String(s).split('.').map(Number);
+            return `${2000+y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          }
+          function seatOf(st,d){
+            if(CORNERS.includes(d)) return null;
+            return st.seats.indexOf(d);
+          }
+          function xy(st,d){
+            if(CORNERS.includes(d)) return CORNER_XY[d];
+            return SEAT_XY[seatOf(st,d)];
+          }
+          function ringSeats(st){return st.seats.slice(1);}
+          function rotateRing(st,shift){
+            const ring=ringSeats(st),out=Array(6),k=((shift%6)+6)%6;
+            for(let i=0;i<6;i++) out[(i+k)%6]=ring[i];
+            st.seats=[st.seats[0],...out];
+          }
+          function swapSeats(st,a,b){
+            const ia=seatOf(st,a),ib=seatOf(st,b);
+            if(ia===null||ib===null||ia<0||ib<0)return;
+            [st.seats[ia],st.seats[ib]]=[st.seats[ib],st.seats[ia]];
+          }
+          function angleSector(p){
+            if(p[0]===0&&p[1]===0)return 0;
+            let a=Math.atan2(p[0],-p[1]);
+            if(a<0)a+=Math.PI*2;
+            return Math.round(a/(Math.PI/6))%12;
+          }
+          function nearestCorner(st,d){
+            const p=xy(st,d);let best=9,bd=Infinity;
+            for(const c of CORNERS){
+              const q=CORNER_XY[c],dd=Math.hypot(p[0]-q[0],p[1]-q[1]);
+              if(dd<bd){bd=dd;best=c;}
+            }
+            return best;
+          }
+          function orientation(st,c){
+            const p=c.map(d=>xy(st,d)),[a,b,z]=p;
+            return ((b[0]-a[0])*(z[1]-a[1])-(b[1]-a[1])*(z[0]-a[0]))>=0?1:-1;
+          }
+          function mod6(n){return ((n%6)+6)%6;}
+          function cornerTorque(st,c){
+            let s=0;
+            c.forEach((d,i)=>{
+              const sec=angleSector(xy(st,d));
+              const cs=angleSector(CORNER_XY[nearestCorner(st,d)]);
+              let delta=((sec-cs+18)%12)-6;
+              s+=(i+1)*delta;
+            });
+            return s;
+          }
+          function selectedInner(c){
+            const a=[];
+            for(const d of c)if(INNER.has(d)&&!a.includes(d))a.push(d);
+            return a;
+          }
+          function centroid(st,c){
+            const p=c.map(d=>xy(st,d));
+            return [p.reduce((s,q)=>s+q[0],0)/3,p.reduce((s,q)=>s+q[1],0)/3];
+          }
+          function farthestRingSeatFrom(point){
+            let best=1,bd=-1;
+            for(let i=1;i<=6;i++){
+              const p=SEAT_XY[i],d=Math.hypot(p[0]-point[0],p[1]-point[1]);
+              if(d>bd){bd=d;best=i;}
+            }
+            return best;
+          }
+
+          /*
+            LIVE ZERO rules:
+            fixed: control, 0 stays wherever previous state left it (no forced move)
+            center: 0 returns to center seat after every draw
+            swapA/B/C: if selected position is inner, zero swaps with that digit
+            yieldCentroid: zero moves to ring seat farthest from combo centroid
+            oppositeAnchor: zero moves opposite nearest 3/6/9 attraction of combo
+          */
+          function moveZero(st,c,mode){
+            if(mode==='fixed')return;
+            const zi=seatOf(st,0);
+
+            if(mode==='center'){
+              if(zi!==0){
+                const d=st.seats[0];
+                swapSeats(st,0,d);
+              }
+              return;
+            }
+
+            if(mode==='swapA'||mode==='swapB'||mode==='swapC'){
+              const idx={swapA:0,swapB:1,swapC:2}[mode];
+              const d=c[idx];
+              if(INNER.has(d) && d!==0)swapSeats(st,0,d);
+              return;
+            }
+
+            let targetSeat=0;
+            if(mode==='yieldCentroid'){
+              targetSeat=farthestRingSeatFrom(centroid(st,c));
+            }else if(mode==='oppositeAnchor'){
+              const counts={9:0,3:0,6:0};
+              for(const d of c)counts[nearestCorner(st,d)]++;
+              const anchor=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+              const targetPoint={
+                9:[0,1.2],3:[1.05,-0.55],6:[-1.05,-0.55]
+              }[anchor];
+              targetSeat=farthestRingSeatFrom([-targetPoint[0],-targetPoint[1]]);
+            }
+            if(targetSeat>0 && zi!==targetSeat){
+              const d=st.seats[targetSeat];
+              swapSeats(st,0,d);
+            }
+          }
+
+          function rebuild(st,c,mode){
+            const ds=selectedInner(c).filter(d=>d!==0);
+            if(ds.length<2)return;
+
+            if(mode==='cycle'){
+              const slots=ds.map(d=>seatOf(st,d));
+              for(let i=0;i<ds.length;i++)st.seats[slots[(i+1)%ds.length]]=ds[i];
+              return;
+            }
+
+            const slots=ds.map(d=>seatOf(st,d)).sort((a,b)=>a-b);
+            let ord=[...ds];
+            if(mode==='reverse'){
+              ord.reverse();
+            }else if(mode==='cornerPull'){
+              const order={9:0,3:1,6:2};
+              ord.sort((a,b)=>order[nearestCorner(st,a)]-order[nearestCorner(st,b)] || angleSector(xy(st,a))-angleSector(xy(st,b)));
+            }else if(mode==='angleOrder'){
+              ord.sort((a,b)=>angleSector(xy(st,a))-angleSector(xy(st,b)));
+            }
+            for(let i=0;i<slots.length;i++)st.seats[slots[i]]=ord[i];
+          }
+
+          function geometryStep(st,c){
+            const p=c.map(d=>xy(st,d));let per=0;
+            for(let i=0;i<3;i++){
+              const q=p[i],r=p[(i+1)%3];
+              per+=Math.hypot(q[0]-r[0],q[1]-r[1]);
+            }
+            return mod6(Math.round(per*10));
+          }
+          function seatSum(st,c){
+            return mod6(c.reduce((s,d)=>s+(CORNERS.includes(d)?({9:5,3:2,6:4}[d]):seatOf(st,d)),0));
+          }
+          function angleStep(st,c){
+            const v=c.map(d=>angleSector(xy(st,d)));
+            return mod6(Math.abs(v[0]-v[1])+Math.abs(v[1]-v[2])+Math.abs(v[0]-v[2]));
+          }
+          function cornerStep(st,c){return mod6(Math.abs(cornerTorque(st,c)));}
+
+          const STEPS={
+            sum:(s,c)=>mod6(c[0]+c[1]+c[2]),
+            weighted:(s,c)=>mod6(c[0]+2*c[1]+3*c[2]),
+            spread:(s,c)=>mod6(Math.abs(c[0]-c[1])+Math.abs(c[1]-c[2])+Math.abs(c[2]-c[0])),
+            geometry:(s,c)=>geometryStep(s,c),
+            seatSum:(s,c)=>seatSum(s,c),
+            angle:(s,c)=>angleStep(s,c),
+            corner:(s,c)=>cornerStep(s,c)
+          };
+          const DIRS={
+            cw:(s,c)=>1,
+            parity:(s,c)=>((c[0]+c[1]+c[2])%2===0?1:-1),
+            orientation:(s,c)=>orientation(s,c),
+            cornerTorque:(s,c)=>cornerTorque(s,c)>=0?1:-1
+          };
+          const REBUILDS=['cycle','reverse','cornerPull','angleOrder'];
+          const ZERO_MODES=['fixed','center','swapA','swapB','swapC','yieldCentroid','oppositeAnchor'];
+
+          function update(st,c,law){
+            let step=STEPS[law.step](st,c);if(step===0)step=6;
+            const dir=DIRS[law.dir](st,c);
+            rotateRing(st,dir*step);
+            rebuild(st,c,law.rebuild);
+            moveZero(st,c,law.zero);
+            return {step,dir,seats:[...st.seats]};
+          }
+
+          function anchorSig(st,c){
+            return c.map(d=>CORNERS.includes(d)?d:nearestCorner(st,d)).join('');
+          }
+          function shapeSig(st,c){
+            const p=c.map(d=>xy(st,d)),ds=[];
+            for(const [i,j] of [[0,1],[1,2],[0,2]]){
+              const d=Math.hypot(p[i][0]-p[j][0],p[i][1]-p[j][1]);
+              ds.push(d<1?'N':d<1.9?'M':'F');
+            }
+            return `${ds.sort().join('')}:${orientation(st,c)>0?'CW':'CCW'}`;
+          }
+          function zeroSig(st){
+            const z=seatOf(st,0);
+            return z===0?'ZC':`ZR${z}`;
+          }
+          function sig(st,c,ctx){
+            const board=st.seats.join('');
+            const a=anchorSig(st,c),sh=shapeSig(st,c),z=zeroSig(st);
+            const mask=c.map(d=>CORNERS.includes(d)?d:(d===0?'0':'x')).join('');
+            return {
+              exact:`${ctx}|${board}|${z}|${a}|${sh}|${mask}|${c.join('')}`,
+              strong:`${ctx}|${board}|${z}|${a}|${sh}|${mask}`,
+              medium:`${ctx}|${z}|${a}|${sh}|${mask}`,
+              coarse:`${ctx}|${z}|${a}|${sh}`,
+              zero:`${ctx}|${z}|${a}`,
+              context:ctx,
+              global:'*'
+            };
+          }
+
+          function empty(){return {n:0,pos:[Array(10).fill(0),Array(10).fill(0),Array(10).fill(0)],pairsAB:new Map(),pairsBC:new Map()};}
+          function add(map,k,t){
+            if(!map.has(k))map.set(k,empty());
+            const s=map.get(k);s.n++;
+            s.pos[0][t.a]++;s.pos[1][t.b]++;s.pos[2][t.c]++;
+            const ab=`${t.a}${t.b}`,bc=`${t.b}${t.c}`;
+            s.pairsAB.set(ab,(s.pairsAB.get(ab)||0)+1);
+            s.pairsBC.set(bc,(s.pairsBC.get(bc)||0)+1);
+          }
+          function dist(s,p,alpha=1.0){
+            const a=Array(10).fill(alpha);
+            if(s)for(let d=0;d<10;d++)a[d]+=s.pos[p][d];
+            const z=a.reduce((x,y)=>x+y,0);return a.map(x=>x/z);
+          }
+          function blend(items){
+            const out=Array(10).fill(0);let ws=0;
+            for(const [a,w] of items){if(!w)continue;ws+=w;for(let d=0;d<10;d++)out[d]+=a[d]*w;}
+            return ws?out.map(x=>x/ws):Array(10).fill(.1);
+          }
+          function pred(map,s){
+            const lv=[
+              ['exact',18,.30],['strong',15,.55],['medium',12,.9],
+              ['coarse',10,1.2],['zero',8,1.45],['context',6,1.7],['global',1,2.0]
+            ];
+            const out=[];
+            for(let p=0;p<3;p++){
+              const items=[];
+              for(const [k,min,w] of lv){
+                const q=map.get(s[k]);
+                if(q&&q.n>=min)items.push([dist(q,p),w*Math.log1p(q.n)]);
+              }
+              out.push(blend(items));
+            }
+            return out;
+          }
+          function topK(a,k){return a.map((v,i)=>[i,v]).sort((x,y)=>y[1]-x[1]||x[0]-y[0]).slice(0,k).map(x=>x[0]);}
+          function metrics(){return {n:0,t1:[0,0,0],t3:[0,0,0],ab:0,bc:0,exact3:0};}
+          function score(m,p,t){
+            const act=[t.a,t.b,t.c],x=p.map(a=>topK(a,1)[0]);m.n++;
+            for(let i=0;i<3;i++){if(x[i]===act[i])m.t1[i]++;if(topK(p[i],3).includes(act[i]))m.t3[i]++;}
+            if(x[0]===act[0]&&x[1]===act[1])m.ab++;
+            if(x[1]===act[1]&&x[2]===act[2])m.bc++;
+            if(x[0]===act[0]&&x[1]===act[1]&&x[2]===act[2])m.exact3++;
+          }
+          function avg1(m){return m.n?(m.t1[0]+m.t1[1]+m.t1[2])/(3*m.n):0;}
+          function avg3(m){return m.n?(m.t3[0]+m.t3[1]+m.t3[2])/(3*m.n):0;}
+          function merit(m){
+            if(!m.n)return -99;
+            const pair=((m.ab+m.bc)/(2*m.n))/0.01;
+            return .64*(avg1(m)/.10)+.22*(avg3(m)/.30)+.14*Math.min(pair,2.5);
+          }
+          function pct(x,n){return n?(100*x/n).toFixed(2)+'%':'0.00%';}
+
+          const ctx={window:{}};
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js','utf8'),ctx);
+          const seed=(ctx.window.TOP3_SEED||[]).map(r=>({id:+r[0],date:String(r[1]),time:String(r[2]),a:+r[3],b:+r[4],c:+r[5]}));
+          const lj=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
+          const live=(lj.draws||[]).map(r=>({id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c}));
+          const byId=new Map();for(const d of seed)byId.set(d.id,d);for(const d of live)byId.set(d.id,d);
+          const draws=[...byId.values()].filter(d=>TI[d.time]!==undefined).sort((a,b)=>a.id-b.id);
+          if(draws.length<5000)throw new Error('Archive too small');
+
+          const byTime=new Map(TIMES.map(t=>[t,[]]));
+          const byDay=new Map();
+          for(const d of draws){
+            byTime.get(d.time).push(d);
+            const k=dateKey(d.date);if(!byDay.has(k))byDay.set(k,[]);byDay.get(k).push(d);
+          }
+          for(const a of byDay.values())a.sort((x,y)=>TI[x.time]-TI[y.time]);
+
+          const laws=[];
+          for(const step of Object.keys(STEPS))
+           for(const dir of Object.keys(DIRS))
+            for(const rebuild of REBUILDS)
+             for(const zero of ZERO_MODES)
+              laws.push({step,dir,rebuild,zero});
+
+          function runV(time,law,trace=false){
+            const list=byTime.get(time),split=Math.floor(list.length*(1-HOLDOUT));
+            const st={seats:[...INITIAL]},map=new Map();let prev=null;
+            const tr=metrics(),te=metrics(),all=metrics(),rows=[];
+            for(let i=0;i<list.length;i++){
+              const d=list[i];
+              if(prev){
+                const p=pred(map,prev);
+                if(i>=WARM_V){score(all,p,d);if(i<split)score(tr,p,d);else score(te,p,d);}
+                for(const k of Object.values(prev))add(map,k,d);
+              }
+              const c=[d.a,d.b,d.c],mv=update(st,c,law);
+              prev=sig(st,c,`V:${time}`);
+              if(trace)rows.push({id:d.id,date:d.date,combo:c.join(''),step:mv.step,dir:mv.dir>0?'CW':'CCW',seats:[...st.seats],zeroSeat:seatOf(st,0),anchor:anchorSig(st,c)});
+            }
+            return {
+              time,law,train:tr,test:te,all,trainMerit:merit(tr),testMerit:merit(te),
+              finalSeats:[...st.seats],
+              next:pred(map,prev).map(a=>({top1:topK(a,1)[0],top3:topK(a,3)})),
+              trace:trace?rows.slice(-15):undefined
+            };
+          }
+
+          // Search all laws only for strongest times; for others keep a smaller representative family.
+          const bestV={};
+          for(const t of TIMES){
+            let candidates=laws;
+            if(!STRONG_TIMES.has(t)){
+              candidates=laws.filter(x=>['sum','seatSum','angle','corner'].includes(x.step) && ['cw','cornerTorque'].includes(x.dir));
+            }
+            const rs=candidates.map(l=>runV(t,l,false)).sort((a,b)=>b.trainMerit-a.trainMerit);
+            bestV[t]=runV(t,rs[0].law,true);
+            bestV[t].top10=rs.slice(0,10).map(x=>({law:x.law,train:x.train,test:x.test,trainMerit:x.trainMerit,testMerit:x.testMerit}));
+          }
+
+          // Exact repeated states for strong times only.
+          const exactRepeats={};
+          for(const t of STRONG_TIMES){
+            const list=byTime.get(t),law=bestV[t].law,st={seats:[...INITIAL]};
+            const seen=new Map(),events=[];
+            for(let i=0;i<list.length;i++){
+              const d=list[i],c=[d.a,d.b,d.c];
+              update(st,c,law);
+              const key=`${st.seats.join('')}|${zeroSig(st)}|${anchorSig(st,c)}|${shapeSig(st,c)}`;
+              if(i+1<list.length){
+                const nxt=list[i+1];
+                if(!seen.has(key))seen.set(key,[]);
+                seen.get(key).push({fromId:d.id,fromCombo:c.join(''),nextId:nxt.id,nextCombo:`${nxt.a}${nxt.b}${nxt.c}`});
+              }
+            }
+            for(const [key,a] of seen){
+              if(a.length<3)continue;
+              const cnt=new Map();
+              for(const e of a)cnt.set(e.nextCombo,(cnt.get(e.nextCombo)||0)+1);
+              const top=[...cnt.entries()].sort((x,y)=>y[1]-x[1])[0];
+              events.push({key,n:a.length,topNextCombo:top[0],topCount:top[1],topRate:top[1]/a.length,examples:a.slice(-6)});
+            }
+            exactRepeats[t]=events.sort((a,b)=>b.topRate-a.topRate||b.n-a.n).slice(0,30);
+          }
+
+          // Horizontal model: choose from best laws of strong verticals + top zero variants around them.
+          const hCandidates=[];
+          for(const t of STRONG_TIMES){
+            const base=bestV[t].law;
+            for(const z of ZERO_MODES)hCandidates.push({...base,zero:z});
+          }
+          const uniq=new Map(hCandidates.map(x=>[JSON.stringify(x),x]));
+
+          function runH(law){
+            const days=[...byDay.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+            const split=Math.floor(days.length*(1-HOLDOUT));
+            const st={seats:[...INITIAL]},map=new Map();
+            const tr=metrics(),te=metrics(),all=metrics(),byTarget=Object.fromEntries(TIMES.map(t=>[t,metrics()]));
+            let seen=0;
+            for(let di=0;di<days.length;di++){
+              let prev=null;
+              for(const d of days[di][1]){
+                if(prev){
+                  const p=pred(map,prev);
+                  if(seen>=WARM_H){score(all,p,d);score(byTarget[d.time],p,d);if(di<split)score(tr,p,d);else score(te,p,d);}
+                  for(const k of Object.values(prev))add(map,k,d);
+                }
+                const c=[d.a,d.b,d.c];update(st,c,law);prev=sig(st,c,`H:${d.time}->NEXT`);seen++;
+              }
+            }
+            return {law,train:tr,test:te,all,byTarget,trainMerit:merit(tr),testMerit:merit(te),finalSeats:[...st.seats]};
+          }
+          const hrs=[...uniq.values()].map(runH).sort((a,b)=>b.trainMerit-a.trainMerit);
+          const bestH=runH(hrs[0].law);
+          bestH.top10=hrs.slice(0,10);
+
+          // Combined walk-forward with chosen per-time law + chosen horizontal law.
+          function runCombined(){
+            const vState=Object.fromEntries(TIMES.map(t=>[t,{seats:[...INITIAL]}]));
+            const vMap=Object.fromEntries(TIMES.map(t=>[t,new Map()]));
+            const vSig=Object.fromEntries(TIMES.map(t=>[t,null]));
+            const vSeen=Object.fromEntries(TIMES.map(t=>[t,0]));
+            const hState={seats:[...INITIAL]},hMap=new Map();let hPrev=null,hDay=null,hSeen=0;
+            const m=metrics(),byT=Object.fromEntries(TIMES.map(t=>[t,metrics()])),recent=[];
+            for(const d of draws){
+              const day=dateKey(d.date);if(day!==hDay){hPrev=null;hDay=day;}
+              let vp=null,hp=null;
+              if(vSig[d.time]&&vSeen[d.time]>=WARM_V)vp=pred(vMap[d.time],vSig[d.time]);
+              if(hPrev&&hSeen>=WARM_H)hp=pred(hMap,hPrev);
+              if(vp||hp){
+                const comb=[];
+                for(let p=0;p<3;p++){
+                  const items=[];if(vp)items.push([vp[p],1.2]);if(hp)items.push([hp[p],1.0]);comb.push(blend(items));
+                }
+                score(m,comb,d);score(byT[d.time],comb,d);
+                recent.push({id:d.id,date:d.date,time:d.time,top1:comb.map(a=>topK(a,1)[0]),top3:comb.map(a=>topK(a,3)),fact:[d.a,d.b,d.c],V:!!vp,H:!!hp});
+              }
+              if(vSig[d.time])for(const k of Object.values(vSig[d.time]))add(vMap[d.time],k,d);
+              if(hPrev)for(const k of Object.values(hPrev))add(hMap,k,d);
+              const c=[d.a,d.b,d.c];
+              update(vState[d.time],c,bestV[d.time].law);vSig[d.time]=sig(vState[d.time],c,`V:${d.time}`);vSeen[d.time]++;
+              update(hState,c,bestH.law);hPrev=sig(hState,c,`H:${d.time}->NEXT`);hSeen++;
+            }
+            return {all:m,byTime:byT,recent:recent.slice(-200)};
+          }
+          const combined=runCombined();
+
+          function line(label,m){
+            return `${label.padEnd(12)} n=${String(m.n).padStart(5)} A=${pct(m.t1[0],m.n)} B=${pct(m.t1[1],m.n)} C=${pct(m.t1[2],m.n)} TOP3=${pct(m.t3.reduce((a,b)=>a+b,0),3*m.n)} AB=${pct(m.ab,m.n)} BC=${pct(m.bc,m.n)} 3/3=${pct(m.exact3,m.n)}`;
+          }
+
+          console.log('='.repeat(180));
+          console.log('MATRIX TOP-3 · LIVE ZERO ROTOR AI · CORNERS + EXACT STATES + VERTICAL + HORIZONTAL');
+          console.log(`Archive=${draws.length}; laws=${laws.length} = ${Object.keys(STEPS).length} steps × ${Object.keys(DIRS).length} dirs × ${REBUILDS.length} rebuilds × ${ZERO_MODES.length} zero modes`);
+          console.log('Inner board has 7 live seats. 0 can stay, return to center, swap with A/B/C, yield away from combo centroid, or move opposite corner pressure.');
+          console.log('='.repeat(180));
+
+          console.log('\n--- STRONG TIMES · FULL LIVE-ZERO SEARCH ---');
+          for(const t of ['02:40','11:40','13:40','16:25']){
+            const r=bestV[t];
+            console.log(`\n${t} law=${r.law.step}/${r.law.dir}/${r.law.rebuild}/ZERO=${r.law.zero}`);
+            console.log(line('TRAIN',r.train));console.log(line('TEST',r.test));
+            console.log(`NEXT ${t}: A=${r.next[0].top1}[${r.next[0].top3}] B=${r.next[1].top1}[${r.next[1].top3}] C=${r.next[2].top1}[${r.next[2].top3}] seats=${r.finalSeats.join('')} zeroSeat=${r.finalSeats.indexOf(0)}`);
+            const rep=exactRepeats[t];
+            console.log(`Exact repeated-state groups (>=3 occurrences): ${rep.length}`);
+            for(const x of rep.slice(0,5))console.log(`  n=${x.n} topNext=${x.topNextCombo} ${pct(x.topCount,x.n)} key=${x.key}`);
+          }
+
+          console.log('\n--- ALL VERTICAL TIMES ---');
+          for(const t of TIMES){
+            const r=bestV[t];
+            console.log(`${t} ${r.law.step}/${r.law.dir}/${r.law.rebuild}/${r.law.zero} TEST A=${pct(r.test.t1[0],r.test.n)} B=${pct(r.test.t1[1],r.test.n)} C=${pct(r.test.t1[2],r.test.n)} AB=${pct(r.test.ab,r.test.n)} BC=${pct(r.test.bc,r.test.n)}`);
+          }
+
+          console.log('\n--- HORIZONTAL ---');
+          console.log(`law=${bestH.law.step}/${bestH.law.dir}/${bestH.law.rebuild}/${bestH.law.zero}`);
+          console.log(line('TRAIN',bestH.train));console.log(line('TEST',bestH.test));
+
+          console.log('\n--- COMBINED ---');
+          console.log(line('ALL',combined.all));
+          for(const t of TIMES)console.log(line(t,combined.byTime[t]));
+
+          const report={
+            generatedAt:new Date().toISOString(),
+            algorithm:'Live Zero Rotor AI',
+            board:{corners:CORNERS,innerInitial:INITIAL,zeroModes:ZERO_MODES},
+            archive:{count:draws.length,times:TIMES},
+            lawSpace:{count:laws.length,steps:Object.keys(STEPS),dirs:Object.keys(DIRS),rebuilds:REBUILDS,zeroModes:ZERO_MODES},
+            vertical:bestV,
+            exactRepeats,
+            horizontal:bestH,
+            combined
+          };
+          fs.writeFileSync('matrix-live-zero-ai-report.json',JSON.stringify(report,null,2));
+          console.log('\nLIVE ZERO AI REPORT DONE');
+          NODE
+
+      - name: Upload Live Zero report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-live-zero-ai-report
+          path: matrix-live-zero-ai-report.json
+          if-no-files-found: error
