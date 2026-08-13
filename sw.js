@@ -1,4 +1,4 @@
-const CACHE='matrix-top3-v1.1.1-lab';
+const CACHE='matrix-top3-v1.1.2-lab';
 const ASSETS=['./','./index.html','./styles.css','./app.js','./top3-data.js','./top3-live.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 const NETWORK_FIRST=['/','/index.html','/app.js','/styles.css','/top3-live.json'];
 

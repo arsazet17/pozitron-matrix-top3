@@ -2,7 +2,8 @@
 const LIVE_URL='./top3-live.json';
 const LAB_KEY='pozitron.labMatrix.predictions.v1';
 const ALGORITHM='LAB v1 · CENTER 8 · pressureTorque 369 · position ON/OFF';
-const state={draws:[],days:14,rowLimit:50,mode:'ALL',activeDigits:new Set(),tab:'matrix',updatedAt:null,source:'встроенный архив',predictions:[],archiveFilter:'all',repeatMode:'none',repeatCount:3,forecastKey:null};
+const OFFICIAL_TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
+const state={draws:[],regularTimes:[...OFFICIAL_TIMES],days:14,rowLimit:50,mode:'ALL',activeDigits:new Set(),tab:'matrix',updatedAt:null,source:'встроенный архив',predictions:[],archiveFilter:'all',repeatMode:'none',repeatCount:3,forecastKey:null};
 const $=s=>document.querySelector(s); const $$=s=>[...document.querySelectorAll(s)];
 const WEEK=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
 const BETS={
@@ -27,7 +28,7 @@ function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;',
 
 async function load(){
   const seed=Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[];let live=[];
-  try{const r=await fetch(`${LIVE_URL}?t=${Date.now()}`,{cache:'no-store'});if(r.ok){const j=await r.json();live=j.draws||[];state.updatedAt=j.updatedAt||null;state.source=j.source||'live';}}catch(e){}
+  try{const r=await fetch(`${LIVE_URL}?t=${Date.now()}`,{cache:'no-store'});if(r.ok){const j=await r.json();live=j.draws||[];const official=Array.isArray(j.regularTimes)?j.regularTimes.filter(t=>OFFICIAL_TIMES.includes(t)):[];state.regularTimes=official.length===OFFICIAL_TIMES.length?[...official].sort():[...OFFICIAL_TIMES];state.updatedAt=j.updatedAt||null;state.source=j.source||'live';}}catch(e){state.regularTimes=[...OFFICIAL_TIMES]}
   state.draws=unique([...live,...seed]);state.predictions=readPredictions();applyFacts(false);
   $('#totalCount').textContent=state.draws.length.toLocaleString('ru-RU');updateStatus();renderAll();
 }
@@ -35,7 +36,7 @@ function updateStatus(){let txt='Обновлено: архив';if(state.update
 function filteredByDays(){if(!state.draws.length)return[];const latest=parseDate(state.draws[0].date);const min=new Date(latest);min.setUTCDate(min.getUTCDate()-(state.days-1));return state.draws.filter(d=>parseDate(d.date)>=min)}
 function daysGrouped(){const list=filteredByDays();const map=new Map();for(const d of list){if(!map.has(d.date))map.set(d.date,[]);map.get(d.date).push(d)}return [...map.entries()].sort((a,b)=>parseDate(b[0])-parseDate(a[0])).slice(0,state.rowLimit)}
 function timeList(groups){const set=new Set();groups.forEach(([,ds])=>ds.forEach(d=>set.add(d.time)));return [...set].sort((a,b)=>a.localeCompare(b))}
-function scheduleTimes(){const counts=new Map();state.draws.forEach(d=>counts.set(d.time,(counts.get(d.time)||0)+1));return [...counts.entries()].filter(([,n])=>n>=2).map(([t])=>t).sort()}
+function scheduleTimes(){return [...state.regularTimes].sort()}
 function freqMap(groups,times){const f={};for(const time of times){f[time]={A:Array(10).fill(0),B:Array(10).fill(0),C:Array(10).fill(0),ALL:Array(10).fill(0)};}for(const [,ds]of groups){for(const d of ds){const vals=[d.a,d.b,d.c];['A','B','C'].forEach((p,i)=>{f[d.time][p][vals[i]]++;f[d.time].ALL[vals[i]]++;});}}return f}
 function level(n,max){if(!max)return 0;const r=n/max;if(n===0)return 0;if(r<.35)return 1;if(r<.55)return 2;if(r<.75)return 3;if(r<.92)return 4;return 5}
 
