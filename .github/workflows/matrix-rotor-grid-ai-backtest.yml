@@ -1,0 +1,493 @@
+name: Matrix TOP-3 · Rotor Grid AI Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-rotor-grid-ai-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rotor-grid:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Rotor Grid AI vertical and horizontal backtest
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const vm=require('vm');
+
+          const TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
+          const TIME_INDEX=Object.fromEntries(TIMES.map((t,i)=>[t,i]));
+          const FIXED=new Set([0,3,6,9]);
+          const MOVABLE=[1,2,4,5,7,8];
+
+          const INITIAL_RING=[1,2,5,8,7,4];
+          const SLOT_XY=[
+            [-0.70,-1.00],[0.70,-1.00],[1.25,0.00],
+            [0.70,1.00],[-0.70,1.00],[-1.25,0.00]
+          ];
+          const FIXED_XY={
+            9:[0.00,-2.05],3:[-1.65,2.05],6:[1.65,2.05],0:[0.00,0.00]
+          };
+          const CORNERS=[9,3,6];
+
+          const WARMUP_VERTICAL=45;
+          const WARMUP_HORIZONTAL=300;
+          const TEST_FRAC=0.30;
+
+          function dateKey(s){
+            const [d,m,y]=String(s).split('.').map(Number);
+            return `${2000+y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          }
+          function slotOf(state,d){return FIXED.has(d)?null:state.ring.indexOf(d);}
+          function xy(state,d){return FIXED.has(d)?FIXED_XY[d]:SLOT_XY[slotOf(state,d)];}
+          function rot(state,shift){
+            const old=state.ring,out=Array(6),k=((shift%6)+6)%6;
+            for(let i=0;i<6;i++)out[(i+k)%6]=old[i];
+            state.ring=out;
+          }
+          function mod6(x){return ((x%6)+6)%6;}
+          function angleSector(p){
+            let a=Math.atan2(p[0],-p[1]);
+            if(a<0)a+=Math.PI*2;
+            return Math.round(a/(Math.PI/6))%12;
+          }
+          function nearestCorner(state,d){
+            const p=xy(state,d);let best=9,bd=Infinity;
+            for(const c of CORNERS){
+              const q=FIXED_XY[c],dd=Math.hypot(p[0]-q[0],p[1]-q[1]);
+              if(dd<bd){bd=dd;best=c;}
+            }
+            return best;
+          }
+          function cornerSignature(state,combo){
+            const near=combo.map(d=>FIXED.has(d)&&d!==0?d:nearestCorner(state,d));
+            const sectors=combo.map(d=>angleSector(xy(state,d)));
+            const anchors=combo.filter(d=>FIXED.has(d)).sort((a,b)=>a-b).join('')||'-';
+            return `N${near.join('')}:S${sectors.join('.')}:A${anchors}`;
+          }
+          function triangleOrientation(state,combo){
+            const p=combo.map(d=>xy(state,d)),[a,b,c]=p;
+            const cross=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+            return cross>=0?1:-1;
+          }
+          function cornerTorque(state,combo){
+            let s=0;
+            combo.forEach((d,i)=>{
+              const sec=angleSector(xy(state,d));
+              const csec=angleSector(FIXED_XY[nearestCorner(state,d)]);
+              let delta=((sec-csec+18)%12)-6;
+              s+=(i+1)*delta;
+            });
+            return s;
+          }
+          function selectedMovables(combo){
+            const out=[];
+            for(const d of combo)if(!FIXED.has(d)&&!out.includes(d))out.push(d);
+            return out;
+          }
+
+          function rebuild(state,combo,mode){
+            const ds=selectedMovables(combo);
+            if(ds.length<2)return;
+
+            if(mode==='cycle'){
+              const slots=ds.map(d=>slotOf(state,d));
+              for(let i=0;i<ds.length;i++)state.ring[slots[(i+1)%ds.length]]=ds[i];
+              return;
+            }
+
+            const slots=ds.map(d=>slotOf(state,d)).sort((a,b)=>a-b);
+            let ordered=[...ds];
+
+            if(mode==='reverse'){
+              ordered=[...ds].reverse();
+            }else if(mode==='cornerPull'){
+              const order={9:0,3:1,6:2};
+              ordered=[...ds].sort((a,b)=>{
+                const ca=nearestCorner(state,a),cb=nearestCorner(state,b);
+                return order[ca]-order[cb] || angleSector(xy(state,a))-angleSector(xy(state,b));
+              });
+            }else if(mode==='angleOrder'){
+              ordered=[...ds].sort((a,b)=>angleSector(xy(state,a))-angleSector(xy(state,b)));
+            }
+            for(let i=0;i<slots.length;i++)state.ring[slots[i]]=ordered[i];
+          }
+
+          function geometryStep(state,c){
+            let perimeter=0;const p=c.map(d=>xy(state,d));
+            for(let i=0;i<3;i++){
+              const q=p[i],r=p[(i+1)%3];
+              perimeter+=Math.hypot(q[0]-r[0],q[1]-r[1]);
+            }
+            return mod6(Math.round(perimeter*10));
+          }
+          function slotSum(state,c){
+            let s=0;
+            for(const d of c){
+              if(FIXED.has(d))s+=({0:0,3:2,6:4,9:5}[d]||0);
+              else s+=slotOf(state,d)+1;
+            }
+            return mod6(s);
+          }
+          function angleStep(state,c){
+            const v=c.map(d=>angleSector(xy(state,d)));
+            return mod6(Math.abs(v[0]-v[1])+Math.abs(v[1]-v[2])+Math.abs(v[0]-v[2]));
+          }
+          function cornerStep(state,c){return mod6(Math.abs(cornerTorque(state,c)));}
+
+          const STEP_RULES={
+            sum:(s,c)=>mod6(c[0]+c[1]+c[2]),
+            weighted:(s,c)=>mod6(c[0]+2*c[1]+3*c[2]),
+            spread:(s,c)=>mod6(Math.abs(c[0]-c[1])+Math.abs(c[1]-c[2])+Math.abs(c[2]-c[0])),
+            pairprod:(s,c)=>mod6(c[0]*c[1]+c[1]*c[2]+c[2]*c[0]),
+            xor:(s,c)=>mod6(c[0]^c[1]^c[2]),
+            geometry:(s,c)=>geometryStep(s,c),
+            slotSum:(s,c)=>slotSum(s,c),
+            angle:(s,c)=>angleStep(s,c),
+            corner:(s,c)=>cornerStep(s,c)
+          };
+          const DIR_RULES={
+            cw:(s,c)=>1,
+            parity:(s,c)=>((c[0]+c[1]+c[2])%2===0?1:-1),
+            orientation:(s,c)=>triangleOrientation(s,c),
+            cornerTorque:(s,c)=>cornerTorque(s,c)>=0?1:-1
+          };
+          const REBUILD=['cycle','reverse','cornerPull','angleOrder'];
+
+          function updateState(state,combo,law){
+            const before=[...state.ring];
+            let step=STEP_RULES[law.step](state,combo);
+            if(step===0)step=6;
+            const dir=DIR_RULES[law.dir](state,combo);
+            rot(state,dir*step);
+            const afterSpin=[...state.ring];
+            rebuild(state,combo,law.rebuild);
+            return {before,afterSpin,after:[...state.ring],step,dir};
+          }
+
+          function shapeClass(state,combo){
+            const p=combo.map(d=>xy(state,d)),dists=[];
+            for(const [i,j] of [[0,1],[1,2],[0,2]]){
+              const dd=Math.hypot(p[i][0]-p[j][0],p[i][1]-p[j][1]);
+              dists.push(dd<1?'N':dd<1.9?'M':'F');
+            }
+            return `${dists.sort().join('')}:${triangleOrientation(state,combo)>0?'CW':'CCW'}`;
+          }
+          function signature(state,combo,context){
+            const corner=cornerSignature(state,combo);
+            const ring=state.ring.join('');
+            const shape=shapeClass(state,combo);
+            const anchor=combo.map(d=>FIXED.has(d)?d:'x').join('');
+            return {
+              exact:`${context}|${ring}|${corner}|${shape}|${anchor}|${combo.join('')}`,
+              strong:`${context}|${ring}|${corner}|${shape}|${anchor}`,
+              medium:`${context}|${corner}|${shape}|${anchor}`,
+              coarse:`${context}|${corner}|${shape}`,
+              context:`${context}`,
+              global:'*'
+            };
+          }
+
+          function emptyCounts(){return {n:0,pos:[Array(10).fill(0),Array(10).fill(0),Array(10).fill(0)]};}
+          function add(map,k,t){
+            if(!map.has(k))map.set(k,emptyCounts());
+            const s=map.get(k);s.n++;
+            s.pos[0][t.a]++;s.pos[1][t.b]++;s.pos[2][t.c]++;
+          }
+          function distCount(s,p,alpha=1.1){
+            const a=Array(10).fill(alpha);
+            if(s)for(let d=0;d<10;d++)a[d]+=s.pos[p][d];
+            const z=a.reduce((x,y)=>x+y,0);
+            return a.map(x=>x/z);
+          }
+          function blend(items){
+            const out=Array(10).fill(0);let ws=0;
+            for(const [a,w] of items){
+              if(!w)continue;ws+=w;
+              for(let d=0;d<10;d++)out[d]+=a[d]*w;
+            }
+            return ws?out.map(x=>x/ws):Array(10).fill(.1);
+          }
+          function predict(map,sig){
+            const levels=[
+              ['exact',28,.35],['strong',22,.65],['medium',16,1.0],
+              ['coarse',12,1.35],['context',8,1.7],['global',1,2.0]
+            ];
+            const out=[];
+            for(let p=0;p<3;p++){
+              const items=[];
+              for(const [name,minN,w] of levels){
+                const s=map.get(sig[name]);
+                if(s&&s.n>=minN)items.push([distCount(s,p),w*Math.log1p(s.n)]);
+              }
+              out.push(blend(items));
+            }
+            return out;
+          }
+          function topK(a,k){return a.map((v,i)=>[i,v]).sort((x,y)=>y[1]-x[1]||x[0]-y[0]).slice(0,k).map(x=>x[0]);}
+
+          function metrics(){return {n:0,t1:[0,0,0],t3:[0,0,0],ab:0,bc:0,exact3:0};}
+          function score(m,pred,t){
+            const act=[t.a,t.b,t.c],p1=pred.map(x=>topK(x,1)[0]);m.n++;
+            for(let p=0;p<3;p++){
+              if(p1[p]===act[p])m.t1[p]++;
+              if(topK(pred[p],3).includes(act[p]))m.t3[p]++;
+            }
+            if(p1[0]===act[0]&&p1[1]===act[1])m.ab++;
+            if(p1[1]===act[1]&&p1[2]===act[2])m.bc++;
+            if(p1[0]===act[0]&&p1[1]===act[1]&&p1[2]===act[2])m.exact3++;
+          }
+          function avg1(m){return m.n?(m.t1[0]+m.t1[1]+m.t1[2])/(3*m.n):0;}
+          function avg3(m){return m.n?(m.t3[0]+m.t3[1]+m.t3[2])/(3*m.n):0;}
+          function merit(m){
+            if(!m.n)return -99;
+            const pair=((m.ab+m.bc)/(2*m.n))/0.01;
+            return .68*(avg1(m)/.10)+.24*(avg3(m)/.30)+.08*Math.min(pair,2);
+          }
+          function pct(x,n){return n?(100*x/n).toFixed(2)+'%':'0.00%';}
+
+          const ctx={window:{}};
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js','utf8'),ctx);
+          const seed=(ctx.window.TOP3_SEED||[]).map(r=>({id:+r[0],date:String(r[1]),time:String(r[2]),a:+r[3],b:+r[4],c:+r[5]}));
+          const livej=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
+          const live=(livej.draws||[]).map(r=>({id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c}));
+
+          const byId=new Map();
+          for(const d of seed)byId.set(d.id,d);
+          for(const d of live)byId.set(d.id,d);
+          const draws=[...byId.values()].filter(d=>TIME_INDEX[d.time]!==undefined).sort((a,b)=>a.id-b.id);
+          if(draws.length<5000)throw new Error(`Мало общего архива: ${draws.length}`);
+
+          const overallSplitId=draws[Math.floor(draws.length*(1-TEST_FRAC))].id;
+          const byTime=new Map(TIMES.map(t=>[t,[]]));
+          const byDay=new Map();
+          for(const d of draws){
+            byTime.get(d.time).push(d);
+            const k=dateKey(d.date);
+            if(!byDay.has(k))byDay.set(k,[]);
+            byDay.get(k).push(d);
+          }
+          for(const arr of byDay.values())arr.sort((a,b)=>TIME_INDEX[a.time]-TIME_INDEX[b.time]);
+
+          const laws=[];
+          for(const step of Object.keys(STEP_RULES))
+           for(const dir of Object.keys(DIR_RULES))
+            for(const rebuild of REBUILD)
+             laws.push({step,dir,rebuild});
+
+          function runVertical(time,law,collect=false){
+            const list=byTime.get(time);
+            const split=Math.floor(list.length*(1-TEST_FRAC));
+            const state={ring:[...INITIAL_RING]},map=new Map();
+            let prevSig=null;
+            const train=metrics(),test=metrics(),all=metrics(),trace=[];
+
+            for(let i=0;i<list.length;i++){
+              const d=list[i];
+              if(prevSig){
+                const pred=predict(map,prevSig);
+                if(i>=WARMUP_VERTICAL){
+                  score(all,pred,d);
+                  if(i<split)score(train,pred,d);else score(test,pred,d);
+                }
+                for(const k of Object.values(prevSig))add(map,k,d);
+              }
+              const combo=[d.a,d.b,d.c];
+              const mv=updateState(state,combo,law);
+              prevSig=signature(state,combo,`V:${time}`);
+              if(collect)trace.push({
+                id:d.id,date:d.date,time,combo:combo.join(''),
+                step:mv.step,dir:mv.dir>0?'CW':'CCW',
+                ring:[...state.ring],corner:cornerSignature(state,combo)
+              });
+            }
+
+            return {
+              time,law,train,test,all,
+              trainMerit:merit(train),testMerit:merit(test),
+              finalRing:[...state.ring],
+              next:predict(map,prevSig).map(a=>({top1:topK(a,1)[0],top3:topK(a,3),top5:topK(a,5)})),
+              trace:collect?trace.slice(-12):undefined
+            };
+          }
+
+          const verticalBest={};
+          for(const time of TIMES){
+            const rs=laws.map(l=>runVertical(time,l,false)).sort((a,b)=>b.trainMerit-a.trainMerit);
+            verticalBest[time]=runVertical(time,rs[0].law,true);
+            verticalBest[time].top5Train=rs.slice(0,5).map(x=>({
+              law:x.law,train:x.train,test:x.test,trainMerit:x.trainMerit,testMerit:x.testMerit
+            }));
+          }
+
+          function runHorizontal(law,collect=false){
+            const days=[...byDay.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+            const split=Math.floor(days.length*(1-TEST_FRAC));
+            const state={ring:[...INITIAL_RING]},map=new Map();
+            const train=metrics(),test=metrics(),all=metrics();
+            const byTarget=Object.fromEntries(TIMES.map(t=>[t,metrics()]));
+            const trace=[];
+            let seen=0;
+
+            for(let di=0;di<days.length;di++){
+              const [day,list]=days[di];
+              let prevSig=null;
+              for(const d of list){
+                if(prevSig){
+                  const pred=predict(map,prevSig);
+                  if(seen>=WARMUP_HORIZONTAL){
+                    score(all,pred,d);score(byTarget[d.time],pred,d);
+                    if(di<split)score(train,pred,d);else score(test,pred,d);
+                  }
+                  for(const k of Object.values(prevSig))add(map,k,d);
+                }
+                const combo=[d.a,d.b,d.c];
+                const mv=updateState(state,combo,law);
+                prevSig=signature(state,combo,`H:${d.time}->NEXT`);
+                seen++;
+                if(collect)trace.push({
+                  id:d.id,date:d.date,time:d.time,combo:combo.join(''),
+                  step:mv.step,dir:mv.dir>0?'CW':'CCW',
+                  ring:[...state.ring],corner:cornerSignature(state,combo)
+                });
+              }
+            }
+            return {
+              law,train,test,all,byTarget,
+              trainMerit:merit(train),testMerit:merit(test),
+              finalRing:[...state.ring],
+              trace:collect?trace.slice(-20):undefined
+            };
+          }
+
+          const hrs=laws.map(l=>runHorizontal(l,false)).sort((a,b)=>b.trainMerit-a.trainMerit);
+          const horizontalBest=runHorizontal(hrs[0].law,true);
+          horizontalBest.top5Train=hrs.slice(0,5).map(x=>({
+            law:x.law,train:x.train,test:x.test,trainMerit:x.trainMerit,testMerit:x.testMerit
+          }));
+
+          function runCombined(){
+            const vState=Object.fromEntries(TIMES.map(t=>[t,{ring:[...INITIAL_RING]}]));
+            const vMap=Object.fromEntries(TIMES.map(t=>[t,new Map()]));
+            const vSig=Object.fromEntries(TIMES.map(t=>[t,null]));
+            const vSeen=Object.fromEntries(TIMES.map(t=>[t,0]));
+
+            const hState={ring:[...INITIAL_RING]},hMap=new Map();
+            let hPrevSig=null,hPrevDay=null,hSeen=0;
+
+            const all=metrics(),test=metrics();
+            const byT=Object.fromEntries(TIMES.map(t=>[t,metrics()]));
+            const byTTest=Object.fromEntries(TIMES.map(t=>[t,metrics()]));
+            const rows=[];
+
+            for(const d of draws){
+              const day=dateKey(d.date);
+              if(day!==hPrevDay){hPrevSig=null;hPrevDay=day;}
+
+              let vp=null,hp=null;
+              if(vSig[d.time]&&vSeen[d.time]>=WARMUP_VERTICAL)vp=predict(vMap[d.time],vSig[d.time]);
+              if(hPrevSig&&hSeen>=WARMUP_HORIZONTAL)hp=predict(hMap,hPrevSig);
+
+              if(vp||hp){
+                const comb=[];
+                for(let p=0;p<3;p++){
+                  const items=[];
+                  if(vp)items.push([vp[p],1.15]);
+                  if(hp)items.push([hp[p],1.00]);
+                  comb.push(blend(items));
+                }
+                score(all,comb,d);score(byT[d.time],comb,d);
+                if(d.id>=overallSplitId){score(test,comb,d);score(byTTest[d.time],comb,d);}
+                rows.push({
+                  id:d.id,date:d.date,time:d.time,
+                  top1:comb.map(a=>topK(a,1)[0]),
+                  top3:comb.map(a=>topK(a,3)),
+                  fact:[d.a,d.b,d.c],hasV:!!vp,hasH:!!hp
+                });
+              }
+
+              if(vSig[d.time])for(const k of Object.values(vSig[d.time]))add(vMap[d.time],k,d);
+              if(hPrevSig)for(const k of Object.values(hPrevSig))add(hMap,k,d);
+
+              const combo=[d.a,d.b,d.c];
+              updateState(vState[d.time],combo,verticalBest[d.time].law);
+              vSig[d.time]=signature(vState[d.time],combo,`V:${d.time}`);
+              vSeen[d.time]++;
+
+              updateState(hState,combo,horizontalBest.law);
+              hPrevSig=signature(hState,combo,`H:${d.time}->NEXT`);
+              hSeen++;
+            }
+            return {all,test,byTime:byT,byTimeTest:byTTest,recent:rows.slice(-150)};
+          }
+          const combined=runCombined();
+
+          function line(label,m){
+            return `${label.padEnd(12)} n=${String(m.n).padStart(5)} A=${pct(m.t1[0],m.n)} B=${pct(m.t1[1],m.n)} C=${pct(m.t1[2],m.n)} TOP3=${pct(m.t3.reduce((a,b)=>a+b,0),3*m.n)} AB=${pct(m.ab,m.n)} BC=${pct(m.bc,m.n)} 3/3=${pct(m.exact3,m.n)}`;
+          }
+
+          console.log('='.repeat(175));
+          console.log('MATRIX TOP-3 · ROTOR GRID AI · VERTICAL + HORIZONTAL + CORNERS');
+          console.log(`Archive: ${draws.length} draws · ${TIMES.length} scheduled times`);
+          console.log(`Candidate mandatory-rebuild laws: ${laws.length} = ${Object.keys(STEP_RULES).length} steps × ${Object.keys(DIR_RULES).length} directions × ${REBUILD.length} rebuilds`);
+          console.log('0,3,6,9 fixed. 1,2,4,5,7,8 rotate. Corner angles 3/6/9 affect step, direction, state signature and rebuild.');
+          console.log('Each vertical time and the horizontal engine choose laws ONLY on older 70%; newer 30% is control.');
+          console.log('='.repeat(175));
+
+          console.log('\n--- VERTICAL · EACH TIME SEPARATELY ---');
+          for(const t of TIMES){
+            const r=verticalBest[t];
+            console.log(`\n${t} law=${r.law.step}/${r.law.dir}/${r.law.rebuild}`);
+            console.log(line('TRAIN',r.train));
+            console.log(line('TEST',r.test));
+            console.log(`NEXT V ${t}: A=${r.next[0].top1}[${r.next[0].top3}] B=${r.next[1].top1}[${r.next[1].top3}] C=${r.next[2].top1}[${r.next[2].top3}] ring=${r.finalRing.join('')}`);
+          }
+
+          console.log('\n--- HORIZONTAL · WITHIN DAY ---');
+          console.log(`law=${horizontalBest.law.step}/${horizontalBest.law.dir}/${horizontalBest.law.rebuild}`);
+          console.log(line('TRAIN',horizontalBest.train));
+          console.log(line('TEST',horizontalBest.test));
+          for(const t of TIMES.slice(1))console.log(line(`to ${t}`,horizontalBest.byTarget[t]));
+
+          console.log('\n--- COMBINED VERTICAL + HORIZONTAL WALK-FORWARD ---');
+          console.log(line('ALL',combined.all));
+          console.log(line('TEST30%',combined.test));
+          for(const t of TIMES)console.log(line(t,combined.byTimeTest[t]));
+
+          const report={
+            generatedAt:new Date().toISOString(),
+            algorithm:'Rotor Grid AI: mandatory internal rebuild + corner-angle state + vertical per time + horizontal within day',
+            geometry:{fixed:[0,3,6,9],movable:MOVABLE,initialRing:INITIAL_RING,slotXY:SLOT_XY,fixedXY:FIXED_XY},
+            archive:{count:draws.length,times:TIMES,controlStartId:overallSplitId},
+            laws:{count:laws.length,steps:Object.keys(STEP_RULES),directions:Object.keys(DIR_RULES),rebuilds:REBUILD},
+            vertical:verticalBest,
+            horizontal:horizontalBest,
+            combined
+          };
+          fs.writeFileSync('matrix-rotor-grid-ai-report.json',JSON.stringify(report,null,2));
+          console.log('\nROTOR GRID AI REPORT DONE');
+          NODE
+
+      - name: Upload Rotor Grid report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-rotor-grid-ai-report
+          path: matrix-rotor-grid-ai-report.json
+          if-no-files-found: error
