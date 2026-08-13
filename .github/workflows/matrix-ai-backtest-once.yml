@@ -1,4 +1,4 @@
-name: Matrix TOP-3 · AI v1 All Bets Backtest
+name: Matrix TOP-3 · AI v2 Selective Backtest
 
 on:
   workflow_dispatch:
@@ -24,11 +24,10 @@ jobs:
         with:
           node-version: '22'
 
-      - name: AI v1 honest walk-forward all bets
+      - name: AI v2 selective honest walk-forward
         shell: bash
         run: |
           node <<'NODE'
-
           const fs = require('fs');
           const vm = require('vm');
 
@@ -43,59 +42,97 @@ jobs:
           const live=(liveJson.draws||[]).map(r=>({
             id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c
           }));
+
           const byId=new Map();
           for(const d of seed) byId.set(d.id,d);
           for(const d of live) byId.set(d.id,d);
           const draws=[...byId.values()].sort((a,b)=>a.id-b.id);
 
+          if(draws.length<2000) throw new Error(`Недостаточно архива: ${draws.length}`);
+
           const POS=['a','b','c'];
+          const TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
           const MODEL_NAMES=['same30','same100','same300','global100','global500','transition','recency'];
-          const WARMUP=500;
+          const WARMUP=1000;
+          const MAX_ADVICE=2;
 
           function uniform(){return Array(10).fill(0.1);}
-          function normalize(a){const s=a.reduce((x,y)=>x+y,0);return s>0?a.map(x=>x/s):uniform();}
-          function argmax(a){let k=0;for(let i=1;i<a.length;i++)if(a[i]>a[k])k=i;return k;}
-
+          function normalize(a){
+            const s=a.reduce((x,y)=>x+y,0);
+            return s>0?a.map(x=>x/s):uniform();
+          }
+          function argmax(a){
+            let k=0;
+            for(let i=1;i<a.length;i++) if(a[i]>a[k]) k=i;
+            return k;
+          }
+          function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+          function quantile(arr,q){
+            if(!arr.length) return 0;
+            const x=[...arr].sort((a,b)=>a-b);
+            const pos=(x.length-1)*q;
+            const lo=Math.floor(pos),hi=Math.ceil(pos);
+            if(lo===hi) return x[lo];
+            const f=pos-lo;
+            return x[lo]*(1-f)+x[hi]*f;
+          }
           function freqDist(list,key,limit,alpha=2){
             const c=Array(10).fill(alpha);
             const start=Math.max(0,list.length-limit);
-            for(let i=start;i<list.length;i++)c[list[i][key]]++;
+            for(let i=start;i<list.length;i++) c[list[i][key]]++;
             return normalize(c);
           }
-          function recencyDist(list,key,limit=150,decay=0.97,alpha=1){
+          function recencyDist(list,key,limit=180,decay=0.975,alpha=1){
             const c=Array(10).fill(alpha);
-            let w=1, used=0;
-            for(let i=list.length-1;i>=0&&used<limit;i--,used++){c[list[i][key]]+=w;w*=decay;}
+            let w=1,used=0;
+            for(let i=list.length-1;i>=0&&used<limit;i--,used++){
+              c[list[i][key]]+=w;
+              w*=decay;
+            }
             return normalize(c);
           }
           function transitionDist(list,key,alpha=1){
-            if(list.length<2)return uniform();
+            if(list.length<2) return uniform();
             const last=list[list.length-1][key];
             const c=Array(10).fill(alpha);
-            let found=0, checked=0;
-            for(let i=list.length-2;i>=0&&checked<500;i--,checked++){
-              if(list[i][key]===last){c[list[i+1][key]]++;found++;}
+            let found=0,checked=0;
+            for(let i=list.length-2;i>=0&&checked<700;i--,checked++){
+              if(list[i][key]===last){
+                c[list[i+1][key]]++;
+                found++;
+              }
             }
-            return found?normalize(c):freqDist(list,key,100,2);
+            return found?normalize(c):freqDist(list,key,120,2);
           }
           function top1Hit(pred,actual){return argmax(pred)===actual?1:0;}
 
-          const perf={};
-          for(const m of MODEL_NAMES)perf[m]=POS.map(()=>({q:[],hits:0}));
-          function perfWeight(m,p){
-            const s=perf[m][p],n=s.q.length;
-            if(n<50)return 1;
-            const shrunk=(s.hits+10)/(n+100);
-            return Math.max(0.55,Math.min(1.65,shrunk/0.10));
+          const perf=new Map();
+          function perfKey(time,m,p){return `${time}|${m}|${p}`;}
+          function perfState(time,m,p){
+            const k=perfKey(time,m,p);
+            if(!perf.has(k)) perf.set(k,{q:[],hits:0});
+            return perf.get(k);
           }
-          function pushPerf(m,p,hit){
-            const s=perf[m][p];s.q.push(hit);s.hits+=hit;
-            if(s.q.length>300)s.hits-=s.q.shift();
+          function pushPerf(time,m,p,hit){
+            for(const t of [time,'*']){
+              const s=perfState(t,m,p);
+              s.q.push(hit); s.hits+=hit;
+              if(s.q.length>400) s.hits-=s.q.shift();
+            }
+          }
+          function shrunkRate(s,priorN=120){
+            return (s.hits+0.10*priorN)/(s.q.length+priorN);
+          }
+          function perfWeight(time,m,p){
+            const st=perfState(time,m,p), sg=perfState('*',m,p);
+            const rt=shrunkRate(st,120), rg=shrunkRate(sg,220);
+            const blend=st.q.length>=80 ? 0.75*rt+0.25*rg : 0.35*rt+0.65*rg;
+            return clamp(blend/0.10,0.45,1.85);
           }
 
           function modelDists(globalHist,sameHist){
             const out={};
-            for(const m of MODEL_NAMES)out[m]=[];
+            for(const m of MODEL_NAMES) out[m]=[];
             for(const key of POS){
               out.same30.push(freqDist(sameHist,key,30,2));
               out.same100.push(freqDist(sameHist,key,100,2));
@@ -103,17 +140,17 @@ jobs:
               out.global100.push(freqDist(globalHist,key,100,2));
               out.global500.push(freqDist(globalHist,key,500,2));
               out.transition.push(transitionDist(sameHist,key,1));
-              out.recency.push(recencyDist(sameHist,key,150,0.97,1));
+              out.recency.push(recencyDist(sameHist,key,180,0.975,1));
             }
             return out;
           }
-          function ensemble(models){
+          function ensemble(time,models){
             const out=[];
             for(let p=0;p<3;p++){
-              const acc=Array(10).fill(0);let ws=0;
+              const acc=Array(10).fill(0); let ws=0;
               for(const m of MODEL_NAMES){
-                const w=perfWeight(m,p);ws+=w;
-                for(let d=0;d<10;d++)acc[d]+=w*models[m][p][d];
+                const w=perfWeight(time,m,p); ws+=w;
+                for(let d=0;d<10;d++) acc[d]+=w*models[m][p][d];
               }
               out.push(acc.map(x=>x/ws));
             }
@@ -122,13 +159,13 @@ jobs:
 
           function buildEmpirical(sameHist){
             const ab=Array(100).fill(0),bc=Array(100).fill(0),ac=Array(100).fill(0);
-            const pStart=Math.max(0,sameHist.length-300);
+            const pStart=Math.max(0,sameHist.length-400);
             for(let i=pStart;i<sameHist.length;i++){
               const d=sameHist[i];
-              ab[d.a*10+d.b]++;bc[d.b*10+d.c]++;ac[d.a*10+d.c]++;
+              ab[d.a*10+d.b]++; bc[d.b*10+d.c]++; ac[d.a*10+d.c]++;
             }
             const tri=new Map();
-            const tStart=Math.max(0,sameHist.length-500);
+            const tStart=Math.max(0,sameHist.length-700);
             for(let i=tStart;i<sameHist.length;i++){
               const d=sameHist[i],k=d.a*100+d.b*10+d.c;
               tri.set(k,(tri.get(k)||0)+1);
@@ -142,51 +179,61 @@ jobs:
           function pairScore(probs,emp,p1,p2,x,y){
             const independent=probs[p1][x]*probs[p2][y];
             const arr=(p1===0&&p2===1)?emp.ab:(p1===1&&p2===2)?emp.bc:emp.ac;
-            const empirical=(arr[x*10+y]+0.35)/(emp.pairN+35);
-            return 0.78*independent+0.22*empirical;
+            const empirical=(arr[x*10+y]+0.45)/(emp.pairN+45);
+            return 0.74*independent+0.26*empirical;
           }
           function tripleScore(probs,emp,a,b,c){
             const independent=probs[0][a]*probs[1][b]*probs[2][c];
             const n=emp.tri.get(a*100+b*10+c)||0;
-            const empirical=(n+0.08)/(emp.triN+80);
-            return 0.90*independent+0.10*empirical;
+            const empirical=(n+0.10)/(emp.triN+100);
+            return 0.88*independent+0.12*empirical;
           }
           function multiset(a,b,c){return [a,b,c].sort((x,y)=>x-y).join('');}
           function permsFor(a,b,c){
-            if(a===b&&b===c)return [[a,b,c]];
-            if(a===b)return [[a,a,c],[a,c,a],[c,a,a]];
-            if(b===c)return [[a,b,b],[b,a,b],[b,b,a]];
-            return [[a,b,c],[a,c,b],[b,a,c],[b,c,a],[c,a,b],[c,b,a]];
+            const set=new Set();
+            const arr=[a,b,c];
+            for(const i of [0,1,2]) for(const j of [0,1,2]) for(const k of [0,1,2]){
+              if(i!==j&&i!==k&&j!==k) set.add(`${arr[i]}${arr[j]}${arr[k]}`);
+            }
+            return [...set].map(s=>s.split('').map(Number));
           }
           const BAG_PATTERNS=[];
-          for(let a=0;a<10;a++)for(let b=a;b<10;b++)for(let c=b;c<10;c++){
-            if(a===c)continue;
+          for(let a=0;a<10;a++) for(let b=a;b<10;b++) for(let c=b;c<10;c++){
+            if(a===c) continue; // "Любые 3" требует хотя бы две разные цифры
             const perms=permsFor(a,b,c);
             BAG_PATTERNS.push({triple:[a,b,c],perms,permCount:perms.length});
           }
+
           function sameOrdered(t,p){return t.a===p[0]&&t.b===p[1]&&t.c===p[2];}
           function sameBag(t,p){return multiset(t.a,t.b,t.c)===multiset(...p);}
 
           function buildPredictions(probs,emp){
             let exact1={score:-1,pos:0,digit:0};
-            for(let p=0;p<3;p++)for(let d=0;d<10;d++)if(probs[p][d]>exact1.score)exact1={score:probs[p][d],pos:p,digit:d};
+            for(let p=0;p<3;p++) for(let d=0;d<10;d++){
+              if(probs[p][d]>exact1.score) exact1={score:probs[p][d],pos:p,digit:d};
+            }
 
-            let first2={score:-1,pair:[0,0]},last2={score:-1,pair:[0,0]},any2={score:-1,pair:[0,1]};
-            for(let x=0;x<10;x++)for(let y=0;y<10;y++){
-              const ab=pairScore(probs,emp,0,1,x,y);if(ab>first2.score)first2={score:ab,pair:[x,y]};
-              const bc=pairScore(probs,emp,1,2,x,y);if(bc>last2.score)last2={score:bc,pair:[x,y]};
+            let first2={score:-1,pair:[0,0]};
+            let last2={score:-1,pair:[0,0]};
+            let any2={score:-1,pair:[0,1]};
+
+            for(let x=0;x<10;x++) for(let y=0;y<10;y++){
+              const ab=pairScore(probs,emp,0,1,x,y);
+              if(ab>first2.score) first2={score:ab,pair:[x,y]};
+              const bc=pairScore(probs,emp,1,2,x,y);
+              if(bc>last2.score) last2={score:bc,pair:[x,y]};
               if(x<y){
                 const ac=pairScore(probs,emp,0,2,x,y)+pairScore(probs,emp,0,2,y,x);
-                if(ac>any2.score)any2={score:ac,pair:[x,y]};
+                if(ac>any2.score) any2={score:ac,pair:[x,y]};
               }
             }
 
             let exact3={score:-1,triple:[0,0,0]};
             const tripleScores=Array(1000);
-            for(let a=0;a<10;a++)for(let b=0;b<10;b++)for(let c=0;c<10;c++){
+            for(let a=0;a<10;a++) for(let b=0;b<10;b++) for(let c=0;c<10;c++){
               const s=tripleScore(probs,emp,a,b,c);
               tripleScores[a*100+b*10+c]=s;
-              if(s>exact3.score)exact3={score:s,triple:[a,b,c]};
+              if(s>exact3.score) exact3={score:s,triple:[a,b,c]};
             }
 
             let bag3={score:-1,triple:[0,0,1],permCount:3,exactOrder:[0,0,1],exactScore:0};
@@ -194,129 +241,439 @@ jobs:
               let sum=0,bestS=-1,bestP=null;
               for(const p of pat.perms){
                 const s=tripleScores[p[0]*100+p[1]*10+p[2]];
-                sum+=s;if(s>bestS){bestS=s;bestP=p;}
+                sum+=s;
+                if(s>bestS){bestS=s;bestP=p;}
               }
-              if(sum>bag3.score)bag3={score:sum,triple:pat.triple,permCount:pat.permCount,exactOrder:bestP,exactScore:bestS};
+              if(sum>bag3.score){
+                bag3={score:sum,triple:pat.triple,permCount:pat.permCount,exactOrder:bestP,exactScore:bestS};
+              }
             }
-            return {exact1,first2,last2,any2,exact3,any3:bag3,exact3any3:bag3,combo6:bag3};
+
+            return {
+              exact1,
+              first2,
+              last2,
+              any2,
+              exact3,
+              any3:{...bag3},
+              exact3any3:{...bag3},
+              combo6:{...bag3}
+            };
           }
 
           const RULES={
-            exact1:{name:'Точно 1',stake:()=>90,baseline:()=>0.10},
-            first2:{name:'Первые 2',stake:()=>90,baseline:()=>0.01},
-            last2:{name:'Последние 2',stake:()=>90,baseline:()=>0.01},
-            any2:{name:'Любые 2',stake:()=>90,baseline:()=>0.02},
-            exact3:{name:'Точно 3',stake:()=>90,baseline:()=>0.001},
-            any3:{name:'Любые 3',stake:p=>90*p.permCount,baseline:p=>p.permCount/1000},
-            exact3any3:{name:'Точно 3 + Любые 3',stake:()=>90,baseline:p=>p.permCount/1000},
-            combo6:{name:'Комбо 6',stake:()=>90,baseline:p=>p.permCount/1000}
+            exact1:{name:'Точно 1',family:'single',stake:()=>90,base:()=>0.10},
+            first2:{name:'Первые 2',family:'pair',stake:()=>90,base:()=>0.01},
+            last2:{name:'Последние 2',family:'pair',stake:()=>90,base:()=>0.01},
+            any2:{name:'Любые 2',family:'pair',stake:()=>90,base:()=>0.02},
+            exact3:{name:'Точно 3',family:'triple',stake:()=>90,base:()=>0.001},
+            any3:{name:'Любые 3',family:'triple',stake:p=>90*p.permCount,base:p=>p.permCount/1000},
+            exact3any3:{name:'Точно 3 + Любые 3',family:'triple',stake:()=>90,base:p=>p.permCount/1000},
+            combo6:{name:'Комбо 6',family:'triple',stake:()=>90,base:p=>p.permCount/1000}
           };
+
           function settle(key,p,t){
-            const stake=RULES[key].stake(p);let gross=0,hit=false,detail='';
+            const stake=RULES[key].stake(p);
+            let gross=0,hit=false,detail='';
             if(key==='exact1'){
-              hit=[t.a,t.b,t.c][p.pos]===p.digit;gross=hit?450:0;detail=`${'ABC'[p.pos]}=${p.digit}`;
+              hit=[t.a,t.b,t.c][p.pos]===p.digit;
+              gross=hit?450:0;
+              detail=`${'ABC'[p.pos]}=${p.digit}`;
             }else if(key==='first2'){
-              hit=t.a===p.pair[0]&&t.b===p.pair[1];gross=hit?5400:0;detail=`${p.pair[0]}${p.pair[1]}-`;
+              hit=t.a===p.pair[0]&&t.b===p.pair[1];
+              gross=hit?5400:0;
+              detail=`${p.pair[0]}${p.pair[1]}-`;
             }else if(key==='last2'){
-              hit=t.b===p.pair[0]&&t.c===p.pair[1];gross=hit?5400:0;detail=`-${p.pair[0]}${p.pair[1]}`;
+              hit=t.b===p.pair[0]&&t.c===p.pair[1];
+              gross=hit?5400:0;
+              detail=`-${p.pair[0]}${p.pair[1]}`;
             }else if(key==='any2'){
-              const [x,y]=p.pair;hit=(t.a===x&&t.c===y)||(t.a===y&&t.c===x);gross=hit?2700:0;detail=`${x}-${y}`;
+              const [x,y]=p.pair;
+              hit=(t.a===x&&t.c===y)||(t.a===y&&t.c===x);
+              gross=hit?2700:0;
+              detail=`${x}-${y}`;
             }else if(key==='exact3'){
-              hit=sameOrdered(t,p.triple);gross=hit?45000:0;detail=p.triple.join('');
+              hit=sameOrdered(t,p.triple);
+              gross=hit?45000:0;
+              detail=p.triple.join('');
             }else if(key==='any3'){
-              hit=sameBag(t,p.triple);gross=hit?45000:0;detail=p.triple.join('');
+              hit=sameBag(t,p.triple);
+              gross=hit?45000:0;
+              detail=p.triple.join('');
             }else if(key==='exact3any3'){
-              const bag=sameBag(t,p.triple),exact=sameOrdered(t,p.exactOrder);hit=bag;
-              if(exact)gross=27000;else if(bag)gross=p.permCount===3?9000:4500;
+              const bag=sameBag(t,p.triple), exact=sameOrdered(t,p.exactOrder);
+              hit=bag;
+              if(exact) gross=27000;
+              else if(bag) gross=p.permCount===3?9000:4500;
               detail=p.exactOrder.join('')+' / '+p.triple.join('');
             }else if(key==='combo6'){
-              hit=sameBag(t,p.triple);gross=hit?(p.permCount===3?18000:9000):0;detail=p.triple.join('');
+              hit=sameBag(t,p.triple);
+              gross=hit?(p.permCount===3?18000:9000):0;
+              detail=p.triple.join('');
             }
-            return {key,name:RULES[key].name,stake,gross,hit,detail,score:p.score,baseline:RULES[key].baseline(p)};
+            return {
+              key,
+              name:RULES[key].name,
+              family:RULES[key].family,
+              stake,
+              gross,
+              hit,
+              detail,
+              score:p.score,
+              baseline:RULES[key].base(p),
+              ratio:p.score/Math.max(1e-12,RULES[key].base(p))
+            };
           }
 
           function summarize(events){
-            let bets=0,hits=0,stake=0,gross=0,miss=0,maxMiss=0,baseSum=0;
+            let bets=0,hits=0,stake=0,gross=0,miss=0,maxMiss=0;
             for(const e of events){
-              bets++;stake+=e.stake;gross+=e.gross;baseSum+=e.baseline;
-              if(e.hit){hits++;miss=0;}else{miss++;if(miss>maxMiss)maxMiss=miss;}
+              bets++; stake+=e.stake; gross+=e.gross;
+              if(e.hit){hits++;miss=0;}
+              else{miss++;maxMiss=Math.max(maxMiss,miss);}
             }
             const net=gross-stake;
-            return {bets,hits,hitRate:bets?hits/bets:0,baselineHitRate:bets?baseSum/bets:0,
-              lift:bets&&baseSum?(hits/bets)/(baseSum/bets):0,stake,gross,net,roi:stake?net/stake:0,maxMiss};
+            return {
+              bets,hits,
+              hitRate:bets?hits/bets:0,
+              stake,gross,net,
+              roi:stake?net/stake:0,
+              maxMiss
+            };
           }
           function money(x){return Math.round(x).toLocaleString('ru-RU');}
           function pct(x){return (100*x).toFixed(2)+'%';}
           function printSummary(label,s){
-            console.log(label.padEnd(23),`ставок=${String(s.bets).padStart(5)}`,`попад=${String(s.hits).padStart(4)}`,
-              `hit=${pct(s.hitRate).padStart(7)}`,`база=${pct(s.baselineHitRate).padStart(7)}`,`x=${s.lift.toFixed(2).padStart(4)}`,
-              `ставка=${money(s.stake).padStart(12)}₽`,`выигрыш=${money(s.gross).padStart(12)}₽`,
-              `итог=${money(s.net).padStart(12)}₽`,`ROI=${pct(s.roi).padStart(8)}`,`max-мимо=${s.maxMiss}`);
+            console.log(
+              label.padEnd(24),
+              `советов=${String(s.bets).padStart(5)}`,
+              `попад=${String(s.hits).padStart(4)}`,
+              `hit=${pct(s.hitRate).padStart(7)}`,
+              `ставка=${money(s.stake).padStart(12)}₽`,
+              `выигрыш=${money(s.gross).padStart(12)}₽`,
+              `итог=${money(s.net).padStart(12)}₽`,
+              `ROI=${pct(s.roi).padStart(8)}`,
+              `max-мимо=${s.maxMiss}`
+            );
           }
 
-          const sameByTime=new Map(),globalHist=[],events=[],lastArchive=[];
-          for(let i=0;i<draws.length;i++){
-            const target=draws[i],sameHist=sameByTime.get(target.time)||[];
-            if(i>=WARMUP){
-              const models=modelDists(globalHist,sameHist);
-              if(sameHist.length>=20){
-                const probs=ensemble(models),emp=buildEmpirical(sameHist),preds=buildPredictions(probs,emp),settled=[];
-                for(const key of Object.keys(RULES)){
-                  const e=settle(key,preds[key],target);events.push({...e,id:target.id,time:target.time,date:target.date});settled.push(e);
-                }
-                lastArchive.push({id:target.id,date:target.date,time:target.time,fact:[target.a,target.b,target.c],
-                  advice:Object.fromEntries(settled.map(e=>[e.key,{name:e.name,detail:e.detail,hit:e.hit,gross:e.gross,stake:e.stake,
-                    score:+e.score.toFixed(6),baseline:+e.baseline.toFixed(6)}]))});
-                if(lastArchive.length>200)lastArchive.shift();
-              }
-              for(const m of MODEL_NAMES)for(let p=0;p<3;p++)pushPerf(m,p,top1Hit(models[m][p],target[POS[p]]));
+          const signalHist=new Map();
+          function histKey(time,key){return `${time}|${key}`;}
+          function histFor(time,key){
+            const k=histKey(time,key);
+            if(!signalHist.has(k)) signalHist.set(k,[]);
+            return signalHist.get(k);
+          }
+          function subsetSummary(records,threshold){
+            return summarize(records.filter(r=>r.ratio>=threshold));
+          }
+          function minSignals(key){
+            if(key==='exact1') return {train:90,val:30,hits:8};
+            if(['first2','last2','any2'].includes(key)) return {train:70,val:24,hits:3};
+            return {train:100,val:35,hits:2};
+          }
+
+          /*
+            GATE v2:
+            - только предыдущие случаи той же ставки и того же времени;
+            - threshold выбирается на старом TRAIN окне;
+            - потом обязателен отдельный VALIDATION последних 300 случаев;
+            - текущий сигнал должен быть не слабее выбранного порога;
+            - TRAIN и VALIDATION оба должны быть прибыльными;
+            - требуем запас: train ROI > +10%, validation ROI > +5%;
+            - никакой текущий результат не участвует в решении.
+          */
+          function gateAdvice(time,key,current){
+            const h=histFor(time,key);
+            if(h.length<520) return null;
+
+            const validation=h.slice(-300);
+            const training=h.slice(Math.max(0,h.length-1300),-300);
+            if(training.length<200 || validation.length<200) return null;
+
+            const qs=[0.50,0.60,0.70,0.78,0.85,0.90,0.94];
+            const ratios=training.map(x=>x.ratio);
+            const need=minSignals(key);
+            let best=null;
+
+            for(const q of qs){
+              const threshold=quantile(ratios,q);
+              if(current.ratio+1e-12<threshold) continue;
+
+              const tr=training.filter(x=>x.ratio>=threshold);
+              const va=validation.filter(x=>x.ratio>=threshold);
+              if(tr.length<need.train || va.length<need.val) continue;
+
+              const str=summarize(tr), sva=summarize(va);
+              if(str.hits<need.hits || sva.hits<Math.max(1,Math.floor(need.hits/2))) continue;
+
+              if(str.roi<=0.10 || sva.roi<=0.05) continue;
+
+              const recent=h.slice(-600).filter(x=>x.ratio>=threshold);
+              const sre=summarize(recent);
+              if(recent.length<need.val || sre.roi<=0.03) continue;
+
+              const reliability=Math.min(str.roi,sva.roi,sre.roi);
+              const support=Math.log1p(Math.min(tr.length,va.length,recent.length));
+              const strength=reliability*support*(1+0.08*Math.min(3,current.ratio));
+
+              const x={
+                key,time,threshold,q,
+                train:str,validation:sva,recent:sre,
+                strength,
+                currentRatio:current.ratio
+              };
+              if(!best || x.strength>best.strength) best=x;
             }
-            sameHist.push(target);sameByTime.set(target.time,sameHist);globalHist.push(target);
+            return best;
           }
 
-          const keys=Object.keys(RULES),overall={};
-          console.log('='.repeat(180));
-          console.log('MATRIX TOP-3 · NEW AI v1 · HONEST WALK-FORWARD · ALL BET TYPES');
-          console.log(`Архив: ${draws.length} уникальных тиражей · №${draws[0].id} → №${draws[draws.length-1].id}`);
-          console.log(`Warm-up: ${WARMUP}; каждый прогноз видит только прошлое.`);
-          console.log('v1: адаптивный ансамбль same-time 30/100/300 + global 100/500 + transitions + recency; pair/triple scores softly blend same-time joint history.');
-          console.log('Правила/выплаты: по присланным скриншотам. Любые 2 трактуется как A/C в любом порядке (пример 3–7 => 3x7 или 7x3).');
-          console.log('Для Любые 3 / Точно3+Любые3 / Комбо6 тестируются только схемы с 3 или 6 перестановками; все три одинаковые исключены.');
-          console.log('='.repeat(180));
+          function chooseAdvice(candidates){
+            const sorted=candidates.filter(Boolean).sort((a,b)=>b.gate.strength-a.gate.strength);
+            const out=[];
+            let tripleUsed=false;
 
-          console.log('\n--- ВСЯ WALK-FORWARD ИСТОРИЯ ---');
-          for(const key of keys){const s=summarize(events.filter(e=>e.key===key));overall[key]=s;printSummary(RULES[key].name,s);}
+            for(const c of sorted){
+              if(out.length>=MAX_ADVICE) break;
+              if(c.event.family==='triple'){
+                if(tripleUsed) continue;
+                tripleUsed=true;
+              }
+              out.push(c);
+            }
+            return out;
+          }
 
+          const sameByTime=new Map();
+          const globalHist=[];
+          const selectedEvents=[];
+          const allCandidates=[];
+          const archive=[];
+          let drawsWith0=0,drawsWith1=0,drawsWith2=0;
+
+          for(let i=0;i<draws.length;i++){
+            const target=draws[i];
+            const sameHist=sameByTime.get(target.time)||[];
+
+            if(i>=WARMUP && sameHist.length>=40){
+              const models=modelDists(globalHist,sameHist);
+              const probs=ensemble(target.time,models);
+              const emp=buildEmpirical(sameHist);
+              const preds=buildPredictions(probs,emp);
+
+              const currentCandidates=[];
+              for(const key of Object.keys(RULES)){
+                const e=settle(key,preds[key],target);
+                const bare={
+                  ...e,
+                  id:target.id,date:target.date,time:target.time,
+                  fact:[target.a,target.b,target.c]
+                };
+                const gate=gateAdvice(target.time,key,bare);
+                currentCandidates.push({event:bare,gate});
+                allCandidates.push(bare);
+              }
+
+              const chosen=chooseAdvice(currentCandidates);
+              if(chosen.length===0) drawsWith0++;
+              else if(chosen.length===1) drawsWith1++;
+              else drawsWith2++;
+
+              const chosenKeys=new Set(chosen.map(x=>x.event.key));
+              for(const c of currentCandidates){
+                const h=histFor(target.time,c.event.key);
+                h.push(c.event);
+                if(h.length>1800) h.shift();
+                if(chosenKeys.has(c.event.key)){
+                  const out={
+                    ...c.event,
+                    gate:{
+                      threshold:c.gate.threshold,
+                      q:c.gate.q,
+                      strength:c.gate.strength,
+                      trainROI:c.gate.train.roi,
+                      validationROI:c.gate.validation.roi,
+                      recentROI:c.gate.recent.roi,
+                      trainN:c.gate.train.bets,
+                      validationN:c.gate.validation.bets,
+                      recentN:c.gate.recent.bets
+                    }
+                  };
+                  selectedEvents.push(out);
+                }
+              }
+
+              archive.push({
+                id:target.id,date:target.date,time:target.time,
+                fact:[target.a,target.b,target.c],
+                advice:chosen.map(c=>({
+                  key:c.event.key,
+                  name:c.event.name,
+                  detail:c.event.detail,
+                  hit:c.event.hit,
+                  gross:c.event.gross,
+                  stake:c.event.stake,
+                  fire:c.event.hit,
+                  gate:{
+                    trainROI:+c.gate.train.roi.toFixed(4),
+                    validationROI:+c.gate.validation.roi.toFixed(4),
+                    recentROI:+c.gate.recent.roi.toFixed(4),
+                    strength:+c.gate.strength.toFixed(4)
+                  }
+                }))
+              });
+              if(archive.length>300) archive.shift();
+
+              for(const m of MODEL_NAMES){
+                for(let p=0;p<3;p++){
+                  pushPerf(target.time,m,p,top1Hit(models[m][p],target[POS[p]]));
+                }
+              }
+            }else if(i>=WARMUP){
+              // Even before advice gating is ready, model performance can learn from the past.
+              const models=modelDists(globalHist,sameHist);
+              for(const m of MODEL_NAMES){
+                for(let p=0;p<3;p++){
+                  pushPerf(target.time,m,p,top1Hit(models[m][p],target[POS[p]]));
+                }
+              }
+            }
+
+            sameHist.push(target);
+            sameByTime.set(target.time,sameHist);
+            globalHist.push(target);
+          }
+
+          console.log('='.repeat(170));
+          console.log('MATRIX TOP-3 · AI v2 SELECTIVE · HONEST WALK-FORWARD');
+          console.log(`Архив: ${draws.length} тиражей · №${draws[0].id} → №${draws[draws.length-1].id}`);
+          console.log('Каждый совет использует только прошлое. TRAIN и VALIDATION разделены. Максимум 2 совета на тираж.');
+          console.log('Если прибыльного подтверждённого сигнала нет — ПРОПУСК.');
+          console.log('='.repeat(170));
+
+          const overall=summarize(selectedEvents);
+          console.log('\n--- ВСЕ СОВЕТЫ v2 ---');
+          printSummary('ВСЕ СОВЕТЫ',overall);
+          console.log(`Тиражей с 0 советов: ${drawsWith0}; с 1: ${drawsWith1}; с 2: ${drawsWith2}`);
+
+          console.log('\n--- ПО ВИДАМ СТАВОК ---');
+          const byBet={};
+          for(const key of Object.keys(RULES)){
+            const s=summarize(selectedEvents.filter(e=>e.key===key));
+            byBet[key]=s;
+            printSummary(RULES[key].name,s);
+          }
+
+          console.log('\n--- ПО ВРЕМЕНАМ ---');
+          const byTime={};
+          for(const time of TIMES){
+            const s=summarize(selectedEvents.filter(e=>e.time===time));
+            byTime[time]=s;
+            printSummary(time,s);
+          }
+
+          console.log('\n--- ПОСЛЕДНИЕ 50 / 100 / 500 ТИРАЖЕЙ ---');
           const windows={};
+          const predictedIds=[...new Set(allCandidates.map(e=>e.id))];
           for(const N of [50,100,500]){
-            console.log(`\n--- ПОСЛЕДНИЕ ${N} ТИРАЖЕЙ С ПРОГНОЗОМ ---`);
-            const ids=[...new Set(events.map(e=>e.id))].slice(-N),idset=new Set(ids);windows[N]={};
-            for(const key of keys){const s=summarize(events.filter(e=>e.key===key&&idset.has(e.id)));windows[N][key]=s;printSummary(RULES[key].name,s);}
+            const ids=new Set(predictedIds.slice(-N));
+            const s=summarize(selectedEvents.filter(e=>ids.has(e.id)));
+            windows[N]=s;
+            printSummary(`Последние ${N}`,s);
           }
 
-          console.log('\n--- ОСНОВНЫЕ ВРЕМЕНА МАТРИЦЫ · ПОСЛЕДНИЕ ДО 500 ---');
-          const matrixTimes=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'],byTime={};
-          for(const time of matrixTimes){
-            const ids=[...new Set(events.filter(e=>e.time===time).map(e=>e.id))].slice(-500),idset=new Set(ids);
-            console.log(`\n${time} · n=${ids.length}`);byTime[time]={};
-            for(const key of keys){const s=summarize(events.filter(e=>e.key===key&&e.time===time&&idset.has(e.id)));byTime[time][key]=s;printSummary('  '+RULES[key].name,s);}
+          /*
+            Экспериментальный совет на следующий временной слот:
+            только на основе полного уже известного архива, без результата следующего тиража.
+          */
+          const last=draws[draws.length-1];
+          const idx=TIMES.indexOf(last.time);
+          const nextTime=idx>=0?TIMES[(idx+1)%TIMES.length]:TIMES[0];
+          const sameNext=sameByTime.get(nextTime)||[];
+          let nextAdvice=[];
+
+          if(sameNext.length>=40){
+            const models=modelDists(globalHist,sameNext);
+            const probs=ensemble(nextTime,models);
+            const emp=buildEmpirical(sameNext);
+            const preds=buildPredictions(probs,emp);
+            const cs=[];
+
+            for(const key of Object.keys(RULES)){
+              // target-заглушка нужен только для формата; settle не используем.
+              const p=preds[key];
+              const stake=RULES[key].stake(p);
+              let detail='';
+              if(key==='exact1') detail=`${'ABC'[p.pos]}=${p.digit}`;
+              else if(['first2','last2','any2'].includes(key)){
+                if(key==='first2') detail=`${p.pair[0]}${p.pair[1]}-`;
+                if(key==='last2') detail=`-${p.pair[0]}${p.pair[1]}`;
+                if(key==='any2') detail=`${p.pair[0]}-${p.pair[1]}`;
+              }else if(key==='exact3') detail=p.triple.join('');
+              else if(key==='exact3any3') detail=p.exactOrder.join('')+' / '+p.triple.join('');
+              else detail=p.triple.join('');
+
+              const current={
+                key,name:RULES[key].name,family:RULES[key].family,stake,gross:0,hit:false,
+                detail,score:p.score,baseline:RULES[key].base(p),
+                ratio:p.score/Math.max(1e-12,RULES[key].base(p))
+              };
+              const gate=gateAdvice(nextTime,key,current);
+              if(gate) cs.push({event:current,gate});
+            }
+
+            nextAdvice=chooseAdvice(cs).map(c=>({
+              key:c.event.key,
+              name:c.event.name,
+              detail:c.event.detail,
+              strength:+c.gate.strength.toFixed(4),
+              trainROI:+c.gate.train.roi.toFixed(4),
+              validationROI:+c.gate.validation.roi.toFixed(4),
+              recentROI:+c.gate.recent.roi.toFixed(4)
+            }));
           }
 
-          const report={generatedAt:new Date().toISOString(),algorithm:'AI v1 adaptive ensemble, honest walk-forward',
-            archive:{count:draws.length,firstId:draws[0].id,lastId:draws[draws.length-1].id,warmup:WARMUP},
-            rules:{exact1:{stake:90,payout:450},first2:{stake:90,payout:5400},last2:{stake:90,payout:5400},
-              any2:{stake:90,payout:2700,note:'A/C either order; middle arbitrary'},exact3:{stake:90,payout:45000},
-              any3:{stake:'270 for 3 perms / 540 for 6 perms',payout:45000},
-              exact3any3:{stake:90,payout:'27000 exact; 9000 other if 3 perms; 4500 other if 6 perms'},
-              combo6:{stake:90,payout:'18000 for 3 perms; 9000 for 6 perms'}},
-            overall,windows,byTime,lastArchive};
-          fs.writeFileSync('matrix-ai-v1-all-bets-report.json',JSON.stringify(report,null,2));
-          console.log('\nREPORT DONE');
+          console.log(`\n--- СЛЕДУЮЩИЙ СЛОТ ПОСЛЕ №${last.id} ${last.time}: ${nextTime} ---`);
+          if(!nextAdvice.length){
+            console.log('ПРОПУСК · подтверждённого сигнала v2 нет');
+          }else{
+            for(const a of nextAdvice){
+              console.log(`СОВЕТ: ${a.name} · ${a.detail} · trainROI=${pct(a.trainROI)} · validationROI=${pct(a.validationROI)} · recentROI=${pct(a.recentROI)}`);
+            }
+          }
+
+          const report={
+            generatedAt:new Date().toISOString(),
+            algorithm:'AI v2 selective: time-specific adaptive ensemble + train/validation profitability gate',
+            archive:{
+              count:draws.length,
+              firstId:draws[0].id,
+              lastId:draws[draws.length-1].id,
+              warmup:WARMUP
+            },
+            policy:{
+              maxAdvicePerDraw:MAX_ADVICE,
+              trainLookback:'до 1000 старых случаев перед validation',
+              validationLookback:300,
+              recentCheck:600,
+              rule:'TRAIN ROI > 10%, VALIDATION ROI > 5%, RECENT ROI > 3%, minimum sample and hits; otherwise SKIP'
+            },
+            overall,
+            byBet,
+            byTime,
+            windows,
+            drawAdviceCounts:{zero:drawsWith0,one:drawsWith1,two:drawsWith2},
+            next:{afterDraw:last.id,afterTime:last.time,time:nextTime,advice:nextAdvice},
+            archiveAdvice:archive
+          };
+
+          fs.writeFileSync('matrix-ai-v2-selective-report.json',JSON.stringify(report,null,2));
+          console.log('\nAI v2 REPORT DONE');
           NODE
 
-      - name: Upload AI v1 report
+      - name: Upload AI v2 report
         uses: actions/upload-artifact@v4
         with:
-          name: matrix-ai-v1-all-bets-report
-          path: matrix-ai-v1-all-bets-report.json
+          name: matrix-ai-v2-selective-report
+          path: matrix-ai-v2-selective-report.json
           if-no-files-found: error
