@@ -282,22 +282,40 @@
   };
   setTimeout(restoreArchiveFromIdb,0);
 
-  function hasSavedTarget(date,time){
-    return state.predictions.some(p=>p&&p.targetDate===date&&p.targetTime===time&&p.origin!==false);
+  function hasSavedSource(date,time,mode){
+    return state.predictions.some(p=>{
+      if(!p||p.origin===false)return false;
+      const sameMode=(p.repeatMode||'none')===(mode||'none');
+      if(!sameMode)return false;
+      if(p.sourceTargetDate&&p.sourceTargetTime){
+        return p.sourceTargetDate===date&&p.sourceTargetTime===time;
+      }
+      return p.origin===true&&p.targetDate===date&&p.targetTime===time;
+    });
   }
 
   saveForecast=async function(){
-    const f=labForecast();if(!f)return;const targets=targetsForRepeat(f);if(!targets.length)return;
+    const f=labForecast();if(!f)return;
+    const targets=state.repeatMode==='vertical'
+      ? [{id:null,date:addDays(f.target.date,1),time:f.target.time}]
+      : targetsForRepeat(f);
+    if(!targets.length)return;
     try{
       const persisted=await idbReadRecords();
       state.predictions=Array.isArray(persisted)?persisted:[];
     }catch(err){toast('ОШИБКА: архив IndexedDB недоступен.');return}
-    if(hasSavedTarget(f.target.date,f.target.time)){renderStats();renderArchive();toast('Прогноз на этот тираж уже зафиксирован и находится в архиве.');return}
+    if(hasSavedSource(f.target.date,f.target.time,state.repeatMode)){
+      renderStats();renderArchive();
+      toast('Этот режим прогноза уже зафиксирован. Другой режим можно сохранить отдельно.');
+      return
+    }
     const now=new Date().toISOString(),originId=`lab-${Date.now()}`,total=targets.length;
     const frozenSnapshot=JSON.parse(JSON.stringify(f.detectorState||detectorSnapshot(f)));
     frozenSnapshot.savedAt=now;
     const newRecords=targets.map((t,i)=>({
       id:`${originId}-${i+1}`,originId,origin:i===0,isRepeat:i>0,repeatMode:state.repeatMode,repeatIndex:i+1,repeatTotal:total,
+      sourceTargetDate:f.target.date,sourceTargetTime:f.target.time,
+      sourceForecastKey:`${f.target.date}|${f.target.time}|${f.picks.join('')}|${f.bet}|${state.repeatMode}`,
       targetDrawId:t.id,targetDate:t.date,targetTime:t.time,createdAt:now,locked:true,
       forecast:[...f.picks],bet:f.bet,betLabel:betLabel(f.bet),stakePositions:[...f.stakePositions],stakeDigits:[...f.stakeDigits],stakeCost:f.cost,
       matrixState:{center:f.centerMode,factor369:[...f.factor369],verticalSignal:f.verticalSignal,horizontalSignal:f.horizontalSignal,mirrorRotation:f.mirrorRotation,repeatState:f.repeatState,algorithm:f.algorithm},
@@ -335,7 +353,7 @@
   const _renderArchivePersisted=renderArchive;
   renderArchive=function(){return _renderArchivePersisted()};
 
-  /* v1.2.9 — IndexedDB-only archive + collapsible forecast packages.
+  /* v1.3.0 — IndexedDB-only archive + collapsible colored forecast packages.
      Keep the full detector snapshot frozen in storage, but never dump it into the archive UI.
      The archive shows only: target forecast, AI bet, fact, and result/payout. */
   const detectorArchiveStyle=document.createElement('style');
@@ -358,8 +376,13 @@
     .archive-fact-empty{font-size:18px;font-weight:800;color:#9eb0bf}
     .archive-clean-digit.hit{color:#78f39a;border-color:rgba(70,230,120,.62);background:rgba(20,105,55,.40)}
     .archive-clean-digit.miss{color:#ff8f8f;border-color:rgba(255,90,90,.55);background:rgba(105,28,35,.38)}
-    .archive-package{border:1px solid rgba(74,198,255,.24);border-radius:16px;background:rgba(4,18,31,.50);overflow:hidden;margin:0 0 12px}
-    .archive-package>summary{list-style:none;cursor:pointer;padding:15px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(8,35,57,.64)}
+    .archive-package{border:2px solid rgba(70,210,120,.58);border-radius:16px;background:rgba(4,18,31,.50);overflow:hidden;margin:0 0 12px;box-shadow:0 0 0 1px rgba(70,210,120,.08) inset}
+    .archive-package>summary{list-style:none;cursor:pointer;padding:15px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:rgba(13,55,42,.48)}
+    .archive-package.vertical-next{border-color:rgba(171,112,66,.82);box-shadow:0 0 0 1px rgba(171,112,66,.12) inset}
+    .archive-package.vertical-next>summary{background:rgba(82,48,28,.58)}
+    .archive-package.vertical-next .archive-package-title{color:#efc29d}
+    .archive-package.vertical-next .archive-package-arrow{color:#d99a69}
+    .archive-next-badge{display:inline-block;margin-top:6px;padding:3px 8px;border:1px solid rgba(190,126,77,.55);border-radius:999px;color:#efc29d;background:rgba(89,50,27,.36);font-size:10px;font-weight:900;letter-spacing:.06em}
     .archive-package>summary::-webkit-details-marker{display:none}
     .archive-package-title{font-size:16px;font-weight:950;color:#fff}
     .archive-package-meta{margin-top:4px;font-size:12px;color:#9eb0bf;font-weight:700}
@@ -457,19 +480,34 @@
     return d.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'});
   }
 
+  function packageMadeDate(iso){
+    const d=new Date(iso);if(Number.isNaN(d.getTime()))return'—';
+    return d.toLocaleDateString('ru-RU',{day:'2-digit',month:'2-digit',year:'2-digit'});
+  }
+
   function packageCard(rows){
     const sorted=[...rows].sort((a,b)=>(a.repeatIndex||1)-(b.repeatIndex||1));
     const first=sorted[0]||{};
     const count=sorted.length;
     const date=esc(first.targetDate||'—');
     const made=packageTime(first.createdAt);
+    const madeDate=packageMadeDate(first.createdAt);
     const start=sorted[0]?.targetTime||'—',finish=sorted[sorted.length-1]?.targetTime||'—';
     const range=count>1?`${start}–${finish}`:start;
-    return `<details class="archive-package">
+    const vertical=first.repeatMode==='vertical';
+    const title=vertical
+      ? `${date} · ↑ ВЕРТИКАЛЬ · ${esc(start)}`
+      : `${date} · ПАКЕТ ${count} ${drawWord(count).toUpperCase()}`;
+    const meta=vertical
+      ? `Прогноз зафиксирован: ${esc(madeDate)} в ${esc(made)}`
+      : `Прогноз зафиксирован: ${esc(made)} · ${esc(range)}`;
+    const badge=vertical?`<span class="archive-next-badge">СЛЕДУЮЩИЙ ДЕНЬ</span>`:'';
+    return `<details class="archive-package ${vertical?'vertical-next':'today-package'}">
       <summary>
         <div>
-          <div class="archive-package-title">${date} · ПАКЕТ ${count} ${drawWord(count).toUpperCase()}</div>
-          <div class="archive-package-meta">Прогноз зафиксирован: ${esc(made)} · ${esc(range)}</div>
+          <div class="archive-package-title">${title}</div>
+          <div class="archive-package-meta">${meta}</div>
+          ${badge}
         </div>
         <span class="archive-package-arrow">⌄</span>
       </summary>
