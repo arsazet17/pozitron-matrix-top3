@@ -429,7 +429,7 @@ jobs:
           }
 
           function chooseAdvice(candidates){
-            const sorted=candidates.filter(Boolean).sort((a,b)=>b.gate.strength-a.gate.strength);
+            const sorted=candidates.filter(c=>c&&c.gate).sort((a,b)=>b.gate.strength-a.gate.strength);
             const out=[];
             let tripleUsed=false;
 
