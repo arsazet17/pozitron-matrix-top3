@@ -1,0 +1,473 @@
+name: Matrix TOP-3 · Rotor AI 04:40 Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-rotor-ai-0440-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rotor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Rotor AI 04:40 honest state-machine backtest
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const vm=require('vm');
+
+          const TIME='04:40';
+          const FIXED=new Set([0,3,6,9]);
+
+          // Clockwise movable slots around the fixed center 0:
+          // upper-left, upper-right, right, lower-right, lower-left, left.
+          const INITIAL_RING=[1,2,5,8,7,4];
+          const SLOT_XY=[
+            [-0.65,-1.05],
+            [ 0.65,-1.05],
+            [ 1.18, 0.00],
+            [ 0.65, 1.00],
+            [-0.65, 1.00],
+            [-1.18, 0.00]
+          ];
+          const FIXED_XY={
+            9:[0,-2.0],
+            3:[-1.55,2.0],
+            6:[1.55,2.0],
+            0:[0,0]
+          };
+
+          const POS=['A','B','C'];
+          const WARMUP=100;
+
+          function cloneState(s){return {ring:[...s.ring]};}
+          function digitSlot(state,d){
+            if(FIXED.has(d)) return null;
+            return state.ring.indexOf(d);
+          }
+          function digitXY(state,d){
+            if(FIXED.has(d)) return FIXED_XY[d];
+            const i=digitSlot(state,d);
+            return SLOT_XY[i];
+          }
+          function rotateRing(state,shift){
+            const old=state.ring, out=Array(6);
+            const k=((shift%6)+6)%6;
+            for(let i=0;i<6;i++) out[(i+k)%6]=old[i];
+            state.ring=out;
+          }
+          function selectedMovables(combo){
+            const out=[];
+            for(const d of combo){
+              if(!FIXED.has(d)&&!out.includes(d)) out.push(d);
+            }
+            return out;
+          }
+          function rebuild(state,combo,mode){
+            const ds=selectedMovables(combo);
+            if(ds.length<2 || mode==='none') return;
+
+            const slots=ds.map(d=>digitSlot(state,d));
+            if(mode==='cycle'){
+              // A→B→C order: each selected movable digit moves to the next selected slot.
+              const old=[...state.ring];
+              for(let i=0;i<ds.length;i++){
+                const to=slots[(i+1)%slots.length];
+                state.ring[to]=ds[i];
+              }
+              // Restore unselected slots from old is unnecessary: selected slots are fully overwritten.
+            }else if(mode==='reverse'){
+              const rev=[...ds].reverse();
+              for(let i=0;i<slots.length;i++) state.ring[slots[i]]=rev[i];
+            }
+          }
+          function orientation(state,combo){
+            const p=combo.map(d=>digitXY(state,d));
+            const [a,b,c]=p;
+            const cross=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+            return cross>=0?1:-1;
+          }
+          function geoStep(state,combo){
+            const p=combo.map(d=>digitXY(state,d));
+            let s=0;
+            for(let i=0;i<3;i++){
+              const q=p[i],r=p[(i+1)%3];
+              s+=Math.hypot(q[0]-r[0],q[1]-r[1]);
+            }
+            return Math.round(s*10)%6;
+          }
+          function movableSlotSum(state,combo){
+            let s=0;
+            for(const d of combo){
+              if(FIXED.has(d)) s+=({0:0,3:2,6:4,9:5}[d]||0);
+              else s+=digitSlot(state,d)+1;
+            }
+            return s%6;
+          }
+
+          const STEP_RULES={
+            sum:(s,c)=>(c[0]+c[1]+c[2])%6,
+            weighted:(s,c)=>(c[0]+2*c[1]+3*c[2])%6,
+            spread:(s,c)=>(Math.abs(c[0]-c[1])+Math.abs(c[1]-c[2])+Math.abs(c[2]-c[0]))%6,
+            pairprod:(s,c)=>(c[0]*c[1]+c[1]*c[2]+c[2]*c[0])%6,
+            xor:(s,c)=>(c[0]^c[1]^c[2])%6,
+            geometry:(s,c)=>geoStep(s,c),
+            slotSum:(s,c)=>movableSlotSum(s,c)
+          };
+
+          const DIR_RULES={
+            cw:(s,c)=>1,
+            parity:(s,c)=>((c[0]+c[1]+c[2])%2===0?1:-1),
+            orientation:(s,c)=>orientation(s,c)
+          };
+
+          const REBUILD_MODES=['none','cycle','reverse'];
+
+          function updateState(state,combo,law){
+            const before=[...state.ring];
+            let step=STEP_RULES[law.step](state,combo);
+            let dir=DIR_RULES[law.dir](state,combo);
+            if(step===0) step=6; // full revolution, same ring but still recorded as a spin.
+            const signed=dir*step;
+            rotateRing(state,signed);
+            const afterSpin=[...state.ring];
+            rebuild(state,combo,law.rebuild);
+            return {
+              step,dir,signed,
+              before,afterSpin,afterRebuild:[...state.ring]
+            };
+          }
+
+          function edgeClass(x){
+            if(x<1.0)return 'N';
+            if(x<1.8)return 'M';
+            return 'F';
+          }
+          function shapeSignature(state,combo){
+            const p=combo.map(d=>digitXY(state,d));
+            const ds=[];
+            for(const [i,j] of [[0,1],[1,2],[0,2]]){
+              ds.push(edgeClass(Math.hypot(p[i][0]-p[j][0],p[i][1]-p[j][1])));
+            }
+            const ori=orientation(state,combo)>0?'CW':'CCW';
+            const anchors=combo.filter(d=>FIXED.has(d)).sort((a,b)=>a-b).join('')||'-';
+            return `${ds.sort().join('')}:${ori}:A${anchors}`;
+          }
+          function anchorMask(combo){
+            return combo.map(d=>FIXED.has(d)?d:'x').join('');
+          }
+          function ringOffsetLike(state){
+            // If still a pure rotation of initial ring, return the offset; otherwise P+permutation.
+            for(let k=0;k<6;k++){
+              const test=Array(6);
+              for(let i=0;i<6;i++) test[(i+k)%6]=INITIAL_RING[i];
+              if(test.join('')===state.ring.join('')) return `R${k}`;
+            }
+            return `P${state.ring.join('')}`;
+          }
+
+          function makeSignature(state,combo){
+            const shape=shapeSignature(state,combo);
+            const ring=state.ring.join('');
+            const coarse=ringOffsetLike(state);
+            const am=anchorMask(combo);
+            const comboCode=combo.join('');
+            return {
+              exact:`${ring}|${shape}|${am}|${comboCode}`,
+              strong:`${ring}|${shape}|${am}`,
+              medium:`${coarse}|${shape}|${am}`,
+              coarse:`${shape}|${am}`,
+              ring:`${coarse}`,
+              global:'*'
+            };
+          }
+
+          function emptyCounts(){
+            return {
+              n:0,
+              pos:[Array(10).fill(0),Array(10).fill(0),Array(10).fill(0)]
+            };
+          }
+          function addCount(map,key,target){
+            if(!map.has(key)) map.set(key,emptyCounts());
+            const s=map.get(key);
+            s.n++;
+            s.pos[0][target.a]++; s.pos[1][target.b]++; s.pos[2][target.c]++;
+          }
+          function distFromCounts(s,p,alpha=1){
+            const a=Array(10).fill(alpha);
+            if(s) for(let d=0;d<10;d++) a[d]+=s.pos[p][d];
+            const sum=a.reduce((x,y)=>x+y,0);
+            return a.map(x=>x/sum);
+          }
+          function blendDists(items){
+            const out=Array(10).fill(0);let ws=0;
+            for(const [a,w] of items){
+              if(!w)continue;
+              ws+=w;
+              for(let d=0;d<10;d++)out[d]+=a[d]*w;
+            }
+            if(!ws)return Array(10).fill(.1);
+            return out.map(x=>x/ws);
+          }
+          function predict(maps,sig){
+            const levels=[
+              ['exact',45,0.3],
+              ['strong',35,0.6],
+              ['medium',25,1.0],
+              ['coarse',18,1.4],
+              ['ring',12,1.8],
+              ['global',1,2.6]
+            ];
+            const out=[];
+            for(let p=0;p<3;p++){
+              const items=[];
+              for(const [name,minN,w] of levels){
+                const s=maps.get(sig[name]);
+                if(s&&s.n>=minN) items.push([distFromCounts(s,p,1.2),w*Math.log1p(s.n)]);
+              }
+              out.push(blendDists(items));
+            }
+            return out;
+          }
+          function topK(a,k){
+            return a.map((v,i)=>[i,v]).sort((x,y)=>y[1]-x[1]||x[0]-y[0]).slice(0,k).map(x=>x[0]);
+          }
+
+          function makeMetrics(){
+            return {
+              n:0,top1:[0,0,0],top3:[0,0,0],
+              ab:0,bc:0,exact3:0,atLeast1:0,atLeast2:0
+            };
+          }
+          function scoreMetric(m,preds,target){
+            const act=[target.a,target.b,target.c];
+            m.n++;
+            let hits=0;
+            for(let p=0;p<3;p++){
+              if(topK(preds[p],1)[0]===act[p]){m.top1[p]++;hits++;}
+              if(topK(preds[p],3).includes(act[p]))m.top3[p]++;
+            }
+            const t1=preds.map(x=>topK(x,1)[0]);
+            if(t1[0]===act[0]&&t1[1]===act[1])m.ab++;
+            if(t1[1]===act[1]&&t1[2]===act[2])m.bc++;
+            if(hits===3)m.exact3++;
+            if(hits>=1)m.atLeast1++;
+            if(hits>=2)m.atLeast2++;
+          }
+          function avgTop1(m){
+            return m.n?(m.top1[0]+m.top1[1]+m.top1[2])/(3*m.n):0;
+          }
+          function avgTop3(m){
+            return m.n?(m.top3[0]+m.top3[1]+m.top3[2])/(3*m.n):0;
+          }
+          function selectionScore(m){
+            if(!m.n)return -999;
+            // Main objective is stable single-position prediction; top3 is secondary.
+            const l1=avgTop1(m)/0.10;
+            const l3=avgTop3(m)/0.30;
+            const pair=((m.ab+m.bc)/(2*m.n))/0.01;
+            return 0.68*l1+0.24*l3+0.08*Math.min(pair,2.0);
+          }
+          function pct(x,n){return n?(100*x/n).toFixed(2)+'%':'0.00%';}
+
+          const ctx={window:{}};
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js','utf8'),ctx);
+          const seed=(ctx.window.TOP3_SEED||[]).map(r=>({
+            id:+r[0],date:String(r[1]),time:String(r[2]),a:+r[3],b:+r[4],c:+r[5]
+          }));
+          const liveJson=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
+          const live=(liveJson.draws||[]).map(r=>({
+            id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c
+          }));
+          const byId=new Map();
+          for(const d of seed)byId.set(d.id,d);
+          for(const d of live)byId.set(d.id,d);
+          const draws=[...byId.values()].filter(d=>d.time===TIME).sort((a,b)=>a.id-b.id);
+          if(draws.length<500)throw new Error(`Мало тиражей ${TIME}: ${draws.length}`);
+
+          const split=Math.floor(draws.length*0.70);
+
+          function runLaw(law,collectTrace=false){
+            const state={ring:[...INITIAL_RING]};
+            const maps=new Map();
+            const train=makeMetrics(),test=makeMetrics(),all=makeMetrics();
+            let prevSig=null;
+            const trace=[];
+
+            for(let i=0;i<draws.length;i++){
+              const d=draws[i];
+
+              // Prediction of current draw is made from the complete rotor state
+              // created by the previous draw, BEFORE current result is added.
+              if(prevSig){
+                const preds=predict(maps,prevSig);
+                if(i>=WARMUP){
+                  scoreMetric(all,preds,d);
+                  if(i<split)scoreMetric(train,preds,d);
+                  else scoreMetric(test,preds,d);
+                }
+                // Only after scoring do we teach the engine the actual current result.
+                for(const key of Object.values(prevSig))addCount(maps,key,d);
+              }
+
+              const combo=[d.a,d.b,d.c];
+              const move=updateState(state,combo,law);
+              prevSig=makeSignature(state,combo);
+
+              if(collectTrace){
+                trace.push({
+                  id:d.id,date:d.date,combo:combo.join(''),
+                  step:move.step,dir:move.dir>0?'CW':'CCW',
+                  ringBefore:move.before.join(''),
+                  ringAfterSpin:move.afterSpin.join(''),
+                  ringAfterRebuild:move.afterRebuild.join(''),
+                  stateClass:ringOffsetLike(state),
+                  shape:shapeSignature(state,combo)
+                });
+              }
+            }
+
+            // Current next prediction after latest known 04:40.
+            const nextPred=predict(maps,prevSig);
+            return {
+              law,train,test,all,
+              scoreTrain:selectionScore(train),
+              scoreTest:selectionScore(test),
+              finalState:[...state.ring],
+              next:{
+                top1:nextPred.map(a=>topK(a,1)[0]),
+                top3:nextPred.map(a=>topK(a,3)),
+                top5:nextPred.map(a=>topK(a,5).map(d=>({digit:d,score:+a[d].toFixed(5)})))
+              },
+              trace:collectTrace?trace.slice(-30):undefined
+            };
+          }
+
+          const laws=[];
+          for(const step of Object.keys(STEP_RULES))
+            for(const dir of Object.keys(DIR_RULES))
+              for(const rebuild of REBUILD_MODES)
+                laws.push({step,dir,rebuild});
+
+          const results=laws.map(law=>runLaw(law,false));
+          results.sort((a,b)=>b.scoreTrain-a.scoreTrain);
+
+          // Law is selected ONLY by the first 70% (training) results.
+          const chosenLaw=results[0].law;
+          const chosen=runLaw(chosenLaw,true);
+
+          console.log('='.repeat(170));
+          console.log('MATRIX TOP-3 · ROTOR AI · 04:40');
+          console.log('0,3,6,9 FIXED · 1,2,4,5,7,8 ROTATE AROUND 0 · COMBO → HIGHLIGHT → REBUILD → NEXT SPIN');
+          console.log(`04:40 archive: ${draws.length} draws · №${draws[0].id} → №${draws[draws.length-1].id}`);
+          console.log(`Candidate rotor laws: ${laws.length}. Best law selected ONLY on first 70%; last 30% is control.`);
+          console.log('Baselines: TOP1=10%, TOP3=30%, First2=1%, Last2=1%, Exact3=0.1%.');
+          console.log('='.repeat(170));
+
+          console.log('\n--- TOP-10 ROTOR LAWS SELECTED BY TRAIN ONLY ---');
+          for(const r of results.slice(0,10)){
+            console.log(
+              `${r.law.step}/${r.law.dir}/${r.law.rebuild}`.padEnd(34),
+              `TRAIN top1=${pct(r.train.top1.reduce((a,b)=>a+b,0),3*r.train.n)}`,
+              `TEST top1=${pct(r.test.top1.reduce((a,b)=>a+b,0),3*r.test.n)}`,
+              `TEST A=${pct(r.test.top1[0],r.test.n)}`,
+              `B=${pct(r.test.top1[1],r.test.n)}`,
+              `C=${pct(r.test.top1[2],r.test.n)}`,
+              `AB=${pct(r.test.ab,r.test.n)}`,
+              `BC=${pct(r.test.bc,r.test.n)}`
+            );
+          }
+
+          function printMetrics(label,m){
+            console.log(
+              label,
+              `n=${m.n}`,
+              `A=${pct(m.top1[0],m.n)}`,
+              `B=${pct(m.top1[1],m.n)}`,
+              `C=${pct(m.top1[2],m.n)}`,
+              `TOP3 A=${pct(m.top3[0],m.n)}`,
+              `B=${pct(m.top3[1],m.n)}`,
+              `C=${pct(m.top3[2],m.n)}`,
+              `First2=${pct(m.ab,m.n)}`,
+              `Last2=${pct(m.bc,m.n)}`,
+              `3/3=${pct(m.exact3,m.n)}`
+            );
+          }
+
+          console.log('\n--- CHOSEN ROTOR LAW ---');
+          console.log(JSON.stringify(chosenLaw));
+          printMetrics('TRAIN 70%:',chosen.train);
+          printMetrics('TEST 30% :',chosen.test);
+          printMetrics('ALL       :',chosen.all);
+
+          console.log('\n--- LAST 12 ROTOR STOPS / REBUILDS ---');
+          for(const x of chosen.trace.slice(-12)){
+            console.log(
+              `№${x.id} ${x.date} combo=${x.combo}`,
+              `spin=${x.dir}${x.step}`,
+              `ring ${x.ringBefore} -> ${x.ringAfterSpin} -> ${x.ringAfterRebuild}`,
+              `state=${x.stateClass}`,
+              `shape=${x.shape}`
+            );
+          }
+
+          console.log(`\n--- NEXT 04:40 AFTER №${draws[draws.length-1].id} ${draws[draws.length-1].date} ---`);
+          console.log(`Current movable ring clockwise: ${chosen.finalState.join(' → ')}`);
+          for(let p=0;p<3;p++){
+            console.log(
+              `${POS[p]}: TOP1=${chosen.next.top1[p]}`,
+              `TOP3=${chosen.next.top3[p].join(',')}`,
+              `TOP5=${chosen.next.top5[p].map(x=>x.digit+':'+(x.score*100).toFixed(1)+'%').join('  ')}`
+            );
+          }
+          console.log(`ROTOR TOP1 COMBO: ${chosen.next.top1.join('')}`);
+
+          const report={
+            generatedAt:new Date().toISOString(),
+            targetTime:TIME,
+            concept:{
+              fixed:[0,3,6,9],
+              movable:[1,2,4,5,7,8],
+              initialClockwiseRing:INITIAL_RING,
+              rule:'result combo -> spin movable ring -> rebuild selected movable digits -> freeze state -> predict next from historical matching rotor states'
+            },
+            archive:{
+              count:draws.length,
+              firstId:draws[0].id,lastId:draws[draws.length-1].id,
+              trainCount:split,testCount:draws.length-split,
+              warmup:WARMUP
+            },
+            chosenLaw,
+            chosen,
+            top10:results.slice(0,10).map(r=>({
+              law:r.law,scoreTrain:r.scoreTrain,scoreTest:r.scoreTest,
+              train:r.train,test:r.test
+            }))
+          };
+          fs.writeFileSync('matrix-rotor-ai-0440-report.json',JSON.stringify(report,null,2));
+          console.log('\nROTOR AI 04:40 REPORT DONE');
+          NODE
+
+      - name: Upload Rotor AI report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-rotor-ai-0440-report
+          path: matrix-rotor-ai-0440-report.json
+          if-no-files-found: error
