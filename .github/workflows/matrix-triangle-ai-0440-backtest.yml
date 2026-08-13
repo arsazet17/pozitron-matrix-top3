@@ -1,0 +1,421 @@
+name: Matrix TOP-3 · Triangle AI 04:40 Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-triangle-ai-0440-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  triangle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Triangle AI 04:40 honest walk-forward
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs=require('fs');
+          const vm=require('vm');
+
+          const TIME='04:40';
+          const POS=['A','B','C'];
+          const BASE_TOP1=0.10;
+          const BASE_TOP3=0.30;
+          const WARMUP=120;
+
+          /*
+                    9
+                  1   2
+                4   0   5
+                  7   8
+               3         6
+          */
+          const XY={
+            9:[ 0.0,-2.0],
+            1:[-0.65,-1.1], 2:[0.65,-1.1],
+            4:[-1.25, 0.0], 0:[0.0,0.0], 5:[1.25,0.0],
+            7:[-0.65, 1.0], 8:[0.65,1.0],
+            3:[-1.55, 2.0], 6:[1.55,2.0]
+          };
+          const DIGITS=[0,1,2,3,4,5,6,7,8,9];
+
+          function dist(a,b){
+            const A=XY[a],B=XY[b];
+            return Math.hypot(A[0]-B[0],A[1]-B[1]);
+          }
+          function norm(arr){
+            const s=arr.reduce((a,b)=>a+b,0);
+            if(!s) return Array(10).fill(0.1);
+            return arr.map(x=>x/s);
+          }
+          function topK(arr,k){
+            return arr.map((v,i)=>[i,v]).sort((a,b)=>b[1]-a[1]||a[0]-b[0]).slice(0,k).map(x=>x[0]);
+          }
+          function softDistance(target,temp=0.75){
+            const a=Array(10).fill(0);
+            for(const d of DIGITS){
+              const p=XY[d];
+              const dd=Math.hypot(p[0]-target[0],p[1]-target[1]);
+              a[d]=Math.exp(-dd/temp);
+            }
+            return norm(a);
+          }
+          function blend(items){
+            const out=Array(10).fill(0); let ws=0;
+            for(const [arr,w] of items){
+              ws+=w;
+              for(let d=0;d<10;d++) out[d]+=arr[d]*w;
+            }
+            return norm(out.map(x=>x/Math.max(ws,1e-9)));
+          }
+          function freq(list,key,limit=100,alpha=1.4){
+            const c=Array(10).fill(alpha);
+            const s=Math.max(0,list.length-limit);
+            for(let i=s;i<list.length;i++) c[list[i][key]]++;
+            return norm(c);
+          }
+          function recency(list,key,limit=160,decay=0.975,alpha=0.8){
+            const c=Array(10).fill(alpha); let w=1,n=0;
+            for(let i=list.length-1;i>=0&&n<limit;i--,n++){
+              c[list[i][key]]+=w; w*=decay;
+            }
+            return norm(c);
+          }
+          function transition(list,key,look=350,alpha=0.7){
+            if(list.length<2) return Array(10).fill(.1);
+            const last=list[list.length-1][key];
+            const c=Array(10).fill(alpha); let n=0;
+            for(let i=Math.max(0,list.length-look-1);i<list.length-1;i++){
+              if(list[i][key]===last){ c[list[i+1][key]]++; n++; }
+            }
+            return n?norm(c):freq(list,key,100,1.2);
+          }
+          function transitionNeighbor(list,key,look=350){
+            if(list.length<2) return Array(10).fill(.1);
+            const last=list[list.length-1][key];
+            const c=Array(10).fill(.45);
+            for(let i=Math.max(0,list.length-look-1);i<list.length-1;i++){
+              if(list[i][key]!==last) continue;
+              const nxt=list[i+1][key];
+              for(const d of DIGITS){
+                const dd=dist(nxt,d);
+                c[d]+=Math.exp(-dd/0.85);
+              }
+            }
+            return norm(c);
+          }
+          function vectorContinue(list,key,factor=1){
+            if(list.length<2) return Array(10).fill(.1);
+            const d1=list[list.length-2][key], d2=list[list.length-1][key];
+            const p1=XY[d1],p2=XY[d2];
+            const t=[p2[0]+factor*(p2[0]-p1[0]), p2[1]+factor*(p2[1]-p1[1])];
+            return softDistance(t,0.72);
+          }
+          function centerMirror(list,key){
+            if(!list.length) return Array(10).fill(.1);
+            const p=XY[list[list.length-1][key]];
+            return softDistance([-p[0],-p[1]],0.85);
+          }
+          function vectorClass(a,b){
+            const A=XY[a],B=XY[b];
+            const dx=B[0]-A[0],dy=B[1]-A[1];
+            const angle=Math.atan2(dy,dx);
+            const sector=((Math.round(angle/(Math.PI/4))%8)+8)%8;
+            const mag=Math.hypot(dx,dy);
+            const ring=mag<0.8?0:mag<1.5?1:mag<2.4?2:3;
+            return `${sector}|${ring}`;
+          }
+          function deltaTransition(list,key,look=450){
+            if(list.length<3) return Array(10).fill(.1);
+            const current=vectorClass(list[list.length-2][key],list[list.length-1][key]);
+            const c=Array(10).fill(.6); let n=0;
+            const s=Math.max(2,list.length-look);
+            for(let i=s;i<list.length;i++){
+              const prev=vectorClass(list[i-2][key],list[i-1][key]);
+              if(prev===current){c[list[i][key]]++;n++;}
+            }
+            return n?norm(c):transitionNeighbor(list,key,250);
+          }
+          function zone(d){
+            if([9,1,2].includes(d)) return 'T';
+            if([4,0,5].includes(d)) return 'M';
+            return 'B';
+          }
+          function zoneTransition(list,key,look=450){
+            if(!list.length) return Array(10).fill(.1);
+            const z=zone(list[list.length-1][key]);
+            const zc={T:1,M:1,B:1};
+            const dc=Array(10).fill(.35);
+            const s=Math.max(0,list.length-look-1);
+            for(let i=s;i<list.length-1;i++){
+              if(zone(list[i][key])===z){
+                const nz=zone(list[i+1][key]);
+                zc[nz]++; dc[list[i+1][key]]++;
+              }
+            }
+            const out=Array(10).fill(0);
+            const zs=zc.T+zc.M+zc.B;
+            for(const d of DIGITS) out[d]=(zc[zone(d)]/zs)*(dc[d]+0.5);
+            return norm(out);
+          }
+
+          const PATHS=[
+            {name:'V-A',idx:[0,0,0]},
+            {name:'V-B',idx:[1,1,1]},
+            {name:'V-C',idx:[2,2,2]},
+            {name:'D-ABC',idx:[0,1,2]},
+            {name:'D-CBA',idx:[2,1,0]}
+          ];
+          function ladderModels(list){
+            const out=[Array(10).fill(0.25),Array(10).fill(0.25),Array(10).fill(0.25)];
+            if(list.length<2) return out.map(norm);
+            const r0=[list[list.length-2].a,list[list.length-2].b,list[list.length-2].c];
+            const r1=[list[list.length-1].a,list[list.length-1].b,list[list.length-1].c];
+            for(const path of PATHS){
+              const x=r0[path.idx[0]], y=r1[path.idx[1]];
+              const X=XY[x],Y=XY[y];
+              const t=[Y[0]+(Y[0]-X[0]),Y[1]+(Y[1]-X[1])];
+              const pd=softDistance(t,0.62);
+              const targetPos=path.idx[2];
+              for(let d=0;d<10;d++) out[targetPos][d]+=pd[d]*2.0;
+            }
+            return out.map(norm);
+          }
+
+          const MODEL_NAMES=[
+            'freq30','freq100','recency',
+            'transition','neighborTransition','deltaTransition',
+            'vectorFull','vectorHalf','mirror','zone','ladder'
+          ];
+
+          function modelSet(hist){
+            const models={};
+            for(const m of MODEL_NAMES) models[m]=[];
+            const ladd=ladderModels(hist);
+            for(const key of ['a','b','c']){
+              models.freq30.push(freq(hist,key,30,1.5));
+              models.freq100.push(freq(hist,key,100,1.5));
+              models.recency.push(recency(hist,key,160,.975,.8));
+              models.transition.push(transition(hist,key,350,.7));
+              models.neighborTransition.push(transitionNeighbor(hist,key,350));
+              models.deltaTransition.push(deltaTransition(hist,key,450));
+              models.vectorFull.push(vectorContinue(hist,key,1.0));
+              models.vectorHalf.push(vectorContinue(hist,key,0.5));
+              models.mirror.push(centerMirror(hist,key));
+              models.zone.push(zoneTransition(hist,key,450));
+            }
+            models.ladder=ladd;
+            return models;
+          }
+
+          const perf=new Map();
+          function pk(m,p){return `${m}|${p}`;}
+          function ps(m,p){
+            const k=pk(m,p);
+            if(!perf.has(k)) perf.set(k,{q:[],top1:0,top3:0});
+            return perf.get(k);
+          }
+          function addPerf(m,p,arr,actual){
+            const s=ps(m,p),t1=topK(arr,1),t3=topK(arr,3);
+            const a=t1.includes(actual)?1:0,b=t3.includes(actual)?1:0;
+            s.q.push([a,b]);s.top1+=a;s.top3+=b;
+            if(s.q.length>240){const z=s.q.shift();s.top1-=z[0];s.top3-=z[1];}
+          }
+          function weight(m,p){
+            const s=ps(m,p),n=s.q.length;
+            const r1=(s.top1+BASE_TOP1*70)/(n+70);
+            const r3=(s.top3+BASE_TOP3*70)/(n+70);
+            const quality=0.62*(r1/BASE_TOP1)+0.38*(r3/BASE_TOP3);
+            return Math.max(.25,Math.min(2.4,Math.pow(quality,1.35)));
+          }
+          function ensemble(models){
+            const out=[];
+            for(let p=0;p<3;p++){
+              out.push(blend(MODEL_NAMES.map(m=>[models[m][p],weight(m,p)])));
+            }
+            return out;
+          }
+
+          /* Load archive */
+          const ctx={window:{}};
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js','utf8'),ctx);
+
+          const seed=(ctx.window.TOP3_SEED||[]).map(r=>({
+            id:+r[0],date:String(r[1]),time:String(r[2]),a:+r[3],b:+r[4],c:+r[5]
+          }));
+          const liveJson=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
+          const live=(liveJson.draws||[]).map(r=>({
+            id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c
+          }));
+          const byId=new Map();
+          for(const d of seed)byId.set(d.id,d);
+          for(const d of live)byId.set(d.id,d);
+          const draws=[...byId.values()].filter(d=>d.time===TIME).sort((a,b)=>a.id-b.id);
+
+          if(draws.length<500) throw new Error(`Мало тиражей ${TIME}: ${draws.length}`);
+
+          function evaluate(rows){
+            const s={n:rows.length,top1:[0,0,0],top3:[0,0,0],pairAB:0,pairBC:0,exact3:0,atLeast1:0,atLeast2:0};
+            for(const r of rows){
+              const act=[r.actual.a,r.actual.b,r.actual.c];
+              let h=0;
+              for(let p=0;p<3;p++){
+                if(r.top1[p]===act[p]){s.top1[p]++;h++;}
+                if(r.top3[p].includes(act[p]))s.top3[p]++;
+              }
+              if(r.top1[0]===act[0]&&r.top1[1]===act[1])s.pairAB++;
+              if(r.top1[1]===act[1]&&r.top1[2]===act[2])s.pairBC++;
+              if(h===3)s.exact3++;
+              if(h>=1)s.atLeast1++;
+              if(h>=2)s.atLeast2++;
+            }
+            return s;
+          }
+          function pct(x,n){return n?(100*x/n).toFixed(2)+'%':'0.00%';}
+          function printEval(label,s){
+            console.log(
+              label,
+              `n=${s.n}`,
+              `A1=${pct(s.top1[0],s.n)}`,
+              `B1=${pct(s.top1[1],s.n)}`,
+              `C1=${pct(s.top1[2],s.n)}`,
+              `A3=${pct(s.top3[0],s.n)}`,
+              `B3=${pct(s.top3[1],s.n)}`,
+              `C3=${pct(s.top3[2],s.n)}`,
+              `AB=${pct(s.pairAB,s.n)}`,
+              `BC=${pct(s.pairBC,s.n)}`,
+              `3/3=${pct(s.exact3,s.n)}`
+            );
+          }
+
+          const rows=[];
+          const hist=[];
+          for(let i=0;i<draws.length;i++){
+            const target=draws[i];
+            if(hist.length>=WARMUP){
+              const models=modelSet(hist);
+              const ens=ensemble(models);
+              const top1=ens.map(a=>topK(a,1)[0]);
+              const top3=ens.map(a=>topK(a,3));
+              rows.push({
+                id:target.id,date:target.date,
+                actual:target,top1,top3,
+                probs:ens.map(a=>topK(a,5).map(d=>({d,p:a[d]})))
+              });
+
+              for(const m of MODEL_NAMES){
+                for(let p=0;p<3;p++) addPerf(m,p,models[m][p],target[['a','b','c'][p]]);
+              }
+            }
+            hist.push(target);
+          }
+
+          const split=Math.floor(rows.length*0.70);
+          const train=rows.slice(0,split);
+          const test=rows.slice(split);
+          const last100=rows.slice(-100);
+          const last300=rows.slice(-300);
+
+          console.log('='.repeat(155));
+          console.log('MATRIX TOP-3 · TRIANGLE AI · 04:40 · HONEST WALK-FORWARD');
+          console.log(`Архив 04:40: ${draws.length} тиражей · №${draws[0].id} → №${draws[draws.length-1].id}`);
+          console.log(`Прогнозных точек после warmup: ${rows.length} · контроль последние 30%: ${test.length}`);
+          console.log('Базы: TOP1=10%, TOP3=30%, AB exact=1%, BC exact=1%, exact3=0.1%.');
+          console.log('='.repeat(155));
+
+          printEval('\nВСЯ ИСТОРИЯ   ',evaluate(rows));
+          printEval('TRAIN 70%      ',evaluate(train));
+          printEval('TEST 30%       ',evaluate(test));
+          printEval('ПОСЛЕДНИЕ 300  ',evaluate(last300));
+          printEval('ПОСЛЕДНИЕ 100  ',evaluate(last100));
+
+          console.log('\n--- МОДЕЛИ: ТЕКУЩИЕ ВЕСА ПО A/B/C ---');
+          for(const m of MODEL_NAMES){
+            console.log(m.padEnd(20),`A=${weight(m,0).toFixed(2)}`,`B=${weight(m,1).toFixed(2)}`,`C=${weight(m,2).toFixed(2)}`);
+          }
+
+          const finalModels=modelSet(hist);
+          const finalEns=ensemble(finalModels);
+          const finalTop5=finalEns.map(a=>topK(a,5).map(d=>({digit:d,score:+a[d].toFixed(5)})));
+          const finalTop1=finalTop5.map(x=>x[0].digit);
+          const finalTop3=finalTop5.map(x=>x.slice(0,3).map(z=>z.digit));
+
+          console.log(`\n--- СЛЕДУЮЩИЙ 04:40 ПОСЛЕ №${draws[draws.length-1].id} ${draws[draws.length-1].date} ---`);
+          for(let p=0;p<3;p++){
+            console.log(
+              `${POS[p]}:`,
+              `TOP1=${finalTop1[p]}`,
+              `TOP3=${finalTop3[p].join(',')}`,
+              `TOP5=${finalTop5[p].map(x=>x.digit+':'+(x.score*100).toFixed(1)+'%').join('  ')}`
+            );
+          }
+          console.log(`СБОРКА TOP1: ${finalTop1.join('')}`);
+
+          console.log('\n--- СОГЛАСИЕ МОДЕЛЕЙ С ТЕКУЩИМ TOP1 ---');
+          for(let p=0;p<3;p++){
+            const target=finalTop1[p];
+            const agree=[];
+            for(const m of MODEL_NAMES){
+              const pick=topK(finalModels[m][p],1)[0];
+              if(pick===target) agree.push(`${m}(w=${weight(m,p).toFixed(2)})`);
+            }
+            console.log(`${POS[p]}=${target}: ${agree.length}/${MODEL_NAMES.length} моделей · ${agree.join(', ')||'нет полного согласия'}`);
+          }
+
+          const report={
+            generatedAt:new Date().toISOString(),
+            targetTime:TIME,
+            geometry:XY,
+            archive:{
+              draws:draws.length,
+              firstId:draws[0].id,
+              lastId:draws[draws.length-1].id,
+              warmup:WARMUP,
+              predictionRows:rows.length,
+              testRows:test.length
+            },
+            baselines:{top1:0.10,top3:0.30,pairExact:0.01,exact3:0.001},
+            results:{
+              all:evaluate(rows),
+              train:evaluate(train),
+              test:evaluate(test),
+              last300:evaluate(last300),
+              last100:evaluate(last100)
+            },
+            modelWeights:Object.fromEntries(MODEL_NAMES.map(m=>[
+              m,{A:weight(m,0),B:weight(m,1),C:weight(m,2)}
+            ])),
+            next:{
+              afterId:draws[draws.length-1].id,
+              afterDate:draws[draws.length-1].date,
+              top1:finalTop1,
+              top3:finalTop3,
+              top5:finalTop5
+            },
+            recentPredictions:rows.slice(-120)
+          };
+          fs.writeFileSync('matrix-triangle-ai-0440-report.json',JSON.stringify(report,null,2));
+          console.log('\nTRIANGLE AI 04:40 REPORT DONE');
+          NODE
+
+      - name: Upload Triangle AI report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-triangle-ai-0440-report
+          path: matrix-triangle-ai-0440-report.json
+          if-no-files-found: error
