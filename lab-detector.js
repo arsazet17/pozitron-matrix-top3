@@ -256,13 +256,86 @@
     state.predictions=[...newRecords,...state.predictions];writePredictions();renderLab();toast(`Сохранено записей: ${newRecords.length}. Детектор и прогноз заблокированы.`)
   };
 
-  const _predictionCard=predictionCard;
+  /* v1.2.5 — clean mobile archive.
+     Keep the full detector snapshot frozen in storage, but never dump it into the archive UI.
+     The archive shows only: target forecast, AI bet, fact, and result/payout. */
+  const detectorArchiveStyle=document.createElement('style');
+  detectorArchiveStyle.textContent=`
+    .prediction-card{padding:14px!important}
+    .prediction-card .pred-head{margin-bottom:12px}
+    .prediction-card .pred-mode{display:none!important}
+    .archive-clean-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .archive-clean-box{padding:13px 14px;border:1px solid rgba(120,190,225,.22);border-radius:14px;background:rgba(4,20,34,.28);min-width:0}
+    .archive-clean-label{font-size:11px;letter-spacing:.09em;color:#9eb0bf;font-weight:800;margin-bottom:8px}
+    .archive-clean-digits{display:flex;gap:8px;flex-wrap:wrap;align-items:center;min-height:44px}
+    .archive-clean-digit{display:inline-flex;align-items:center;justify-content:center;min-width:42px;height:42px;padding:0 10px;border:1px solid rgba(74,198,255,.42);border-radius:11px;background:rgba(12,63,97,.48);font-size:24px;font-weight:900;color:#fff}
+    .archive-ai-bet{font-size:17px;font-weight:900;color:#fff;margin-bottom:7px}
+    .archive-result-main{font-size:18px;font-weight:900;line-height:1.3}
+    .archive-result-amount{font-size:26px;font-weight:950;line-height:1.2;margin-top:5px}
+    .archive-result-win .archive-result-main,.archive-result-win .archive-result-amount{color:#7df2a1}
+    .archive-result-loss .archive-result-main{color:#ff9b9b}
+    .archive-result-pending .archive-result-main{color:#ffd37d}
+    .archive-result-skip .archive-result-main{color:#b8c5ce}
+    .archive-fact-empty{font-size:18px;font-weight:800;color:#9eb0bf}
+    @media(max-width:700px){
+      .archive-clean-grid{grid-template-columns:1fr}
+      .archive-clean-digit{min-width:46px;height:46px;font-size:27px}
+      .archive-result-main{font-size:19px}
+      .archive-result-amount{font-size:28px}
+    }
+  `;
+  document.head.appendChild(detectorArchiveStyle);
+
+  function archiveDigits(values, extraClass=''){
+    const arr=Array.isArray(values)?values:[];
+    return arr.length?arr.map(n=>`<span class="archive-clean-digit ${extraClass}">${esc(n)}</span>`).join(''):'<span class="archive-fact-empty">—</span>';
+  }
+
+  function archiveResult(p){
+    if(!p.fact){
+      return `<div class="archive-result-pending"><div class="archive-result-main">ОЖИДАЕТ ТИРАЖА</div><div class="archive-result-amount">—</div></div>`;
+    }
+    if(p.bet==='skip'||p.resultStatus==='skip'){
+      return `<div class="archive-result-skip"><div class="archive-result-main">ПРОПУСК</div><div class="archive-result-amount">0 ₽</div></div>`;
+    }
+    const amount=Number(p.winAmount||0);
+    const won=p.recommendationWon===true||amount>0||p.resultStatus==='win'||p.resultStatus==='won';
+    if(won){
+      return `<div class="archive-result-win"><div class="archive-result-main">ВЫИГРАЛ</div><div class="archive-result-amount">${rub(amount)}</div></div>`;
+    }
+    return `<div class="archive-result-loss"><div class="archive-result-main">НЕ ВЫИГРАЛ</div><div class="archive-result-amount">0 ₽</div></div>`;
+  }
+
   predictionCard=function(p){
-    let html=_predictionCard(p),snap=p.detectorSnapshot;
-    if(!snap)return html;
-    const pos=(snap.positions||[]).map(x=>`${x.position}:${x.digit} · сила ${Math.round((x.strength||0)*100)}% · согласие ${Math.round((x.agreement||0)*100)}%`).join(' | ');
-    const windows=(snap.verticalWindows||[]).map(x=>`${x.size}д:${x.structure}%`).join(' · ');
-    const extra=`<div class="pred-details detector-snapshot"><b>СНИМОК ДЕТЕКТОРА 🔒</b><br>${esc(snap.version||'STATE DETECTOR')} · состояние: <b>${esc(snap.mode||'—')}</b><br>${esc(pos||'—')}<br>Вертикаль: <b>${esc(snap.verticalSignal||'—')}</b> · рабочее окно: <b>${esc(snap.verticalWindow||'—')}</b><br>Окна: <b>${esc(windows||'—')}</b><br>Горизонталь: <b>${esc(snap.horizontalSignal||'—')}</b><br>369: <b>${esc((snap.factor369||[]).join(' / '))}</b><br>${esc(snap.algorithm||'')}</div>`;
-    return html.replace('</article>',extra+'</article>');
+    const targetDigits=archiveDigits(p.forecast);
+    const stakeDigits=p.bet==='skip'?[]:(Array.isArray(p.stakeDigits)?p.stakeDigits:[]);
+    const aiDigits=p.bet==='skip'?'<span class="archive-fact-empty">СТАВКИ НЕТ</span>':archiveDigits(stakeDigits);
+    const factDigits=archiveDigits(p.fact||[]);
+    const betName=esc(p.betLabel||betLabel(p.bet)||'—');
+    return `<article class="prediction-card ${esc(p.resultStatus||'pending')}">
+      <div class="pred-head">
+        <div><div class="pred-title">${esc(p.targetTime)} · ${esc(p.targetDate)}${p.targetDrawId?` · №${esc(p.targetDrawId)}`:''}</div></div>
+        <div class="pred-lock">🔒 ${new Date(p.createdAt).toLocaleString('ru-RU')}</div>
+      </div>
+      <div class="archive-clean-grid">
+        <div class="archive-clean-box">
+          <div class="archive-clean-label">ЦЕЛЕВОЙ ПРОГНОЗ</div>
+          <div class="archive-clean-digits">${targetDigits}</div>
+        </div>
+        <div class="archive-clean-box">
+          <div class="archive-clean-label">ПРОГНОЗ ИИ / СТАВКА</div>
+          <div class="archive-ai-bet">${betName}</div>
+          <div class="archive-clean-digits">${aiDigits}</div>
+        </div>
+        <div class="archive-clean-box">
+          <div class="archive-clean-label">ФАКТ</div>
+          <div class="archive-clean-digits">${factDigits}</div>
+        </div>
+        <div class="archive-clean-box">
+          <div class="archive-clean-label">РЕЗУЛЬТАТ</div>
+          ${archiveResult(p)}
+        </div>
+      </div>
+    </article>`;
   };
 })();
