@@ -1,0 +1,387 @@
+name: Matrix TOP-3 · Ladders 04:40 Backtest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/matrix-ladders-0440-backtest.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  ladders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Full 04:40 ladders backtest
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const vm = require('vm');
+
+          const TARGET_TIME='04:40';
+          const STEPS=[-2,-1,0,1,2];
+          const BASELINE=0.10;
+
+          const ctx={window:{}};
+          vm.createContext(ctx);
+          vm.runInContext(fs.readFileSync('top3-data.js','utf8'),ctx);
+
+          const seed=(ctx.window.TOP3_SEED||[]).map(r=>({
+            id:+r[0],date:String(r[1]),time:String(r[2]),a:+r[3],b:+r[4],c:+r[5]
+          }));
+          const liveJson=JSON.parse(fs.readFileSync('top3-live.json','utf8'));
+          const live=(liveJson.draws||[]).map(r=>({
+            id:+r.id,date:String(r.date),time:String(r.time),a:+r.a,b:+r.b,c:+r.c
+          }));
+
+          const byId=new Map();
+          for(const d of seed) byId.set(d.id,d);
+          for(const d of live) byId.set(d.id,d);
+
+          const all=[...byId.values()].sort((a,b)=>a.id-b.id);
+          const draws=all.filter(d=>d.time===TARGET_TIME);
+
+          if(draws.length<300) throw new Error(`Мало тиражей ${TARGET_TIME}: ${draws.length}`);
+
+          const V=d=>[d.a,d.b,d.c];
+          const POS=['A','B','C'];
+
+          /*
+            Геометрия матрицы по строкам-дням:
+            V-A: A1 -> A2 -> A3
+            V-B: B1 -> B2 -> B3
+            V-C: C1 -> C2 -> C3
+            D-ABC: A1 -> B2 -> C3
+            D-CBA: C1 -> B2 -> A3
+          */
+          const PATHS=[
+            {id:'V-A',name:'Вертикаль A',idx:[0,0,0]},
+            {id:'V-B',name:'Вертикаль B',idx:[1,1,1]},
+            {id:'V-C',name:'Вертикаль C',idx:[2,2,2]},
+            {id:'D-ABC',name:'Диагональ A→B→C',idx:[0,1,2]},
+            {id:'D-CBA',name:'Диагональ C→B→A',idx:[2,1,0]}
+          ];
+
+          function mod10(n){return ((n%10)+10)%10;}
+          function expectedNext(x,step,mode){
+            const y=x+step;
+            if(mode==='circular') return mod10(y);
+            return y>=0&&y<=9 ? y : null;
+          }
+          function follows(x,y,step,mode){
+            const e=expectedNext(x,step,mode);
+            return e!==null && y===e;
+          }
+          function wilson(h,n,z=1.96){
+            if(!n)return [0,0];
+            const p=h/n,zz=z*z,den=1+zz/n;
+            const c=(p+zz/(2*n))/den;
+            const m=z*Math.sqrt((p*(1-p)+zz/(4*n))/n)/den;
+            return [Math.max(0,c-m),Math.min(1,c+m)];
+          }
+          function pct(x){return (100*x).toFixed(2)+'%';}
+          function lift(rate){return rate/BASELINE;}
+          function binomTailApprox(h,n,p=BASELINE){
+            if(!n)return 1;
+            const mean=n*p, variance=n*p*(1-p);
+            if(!variance)return 1;
+            const z=(h-0.5-mean)/Math.sqrt(variance);
+            // Normal upper tail approximation using erf approximation.
+            const sign=z<0?-1:1;
+            const x=Math.abs(z)/Math.sqrt(2);
+            const t=1/(1+0.3275911*x);
+            const a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429;
+            const erf=sign*(1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x));
+            const cdf=0.5*(1+erf);
+            return Math.max(0,Math.min(1,1-cdf));
+          }
+
+          function evalPattern(list,path,step,mode,start,end){
+            let triggers=0,hits=0;
+            const examples=[];
+            const s=Math.max(2,start);
+            const e=Math.min(end,list.length);
+            for(let i=s;i<e;i++){
+              const d0=V(list[i-2]),d1=V(list[i-1]),d2=V(list[i]);
+              const x=d0[path.idx[0]],y=d1[path.idx[1]],z=d2[path.idx[2]];
+              if(!follows(x,y,step,mode)) continue;
+              const pred=expectedNext(y,step,mode);
+              if(pred===null) continue;
+              triggers++;
+              if(z===pred){
+                hits++;
+                if(examples.length<6) examples.push({
+                  ids:[list[i-2].id,list[i-1].id,list[i].id],
+                  dates:[list[i-2].date,list[i-1].date,list[i].date],
+                  seq:[x,y,z]
+                });
+              }
+            }
+            const rate=triggers?hits/triggers:0;
+            const ci=wilson(hits,triggers);
+            return {
+              triggers,hits,rate,lift:lift(rate),
+              ciLow:ci[0],ciHigh:ci[1],
+              pApprox:binomTailApprox(hits,triggers),
+              examples
+            };
+          }
+
+          const split=Math.floor(draws.length*0.70);
+          const specs=[];
+          for(const mode of ['strict','circular']){
+            for(const path of PATHS){
+              for(const step of STEPS){
+                const train=evalPattern(draws,path,step,mode,0,split);
+                const test=evalPattern(draws,path,step,mode,split,draws.length);
+                const allr=evalPattern(draws,path,step,mode,0,draws.length);
+                const last500=evalPattern(draws,path,step,mode,Math.max(0,draws.length-500),draws.length);
+
+                const stable =
+                  train.triggers>=40 &&
+                  test.triggers>=18 &&
+                  train.rate>=0.12 &&
+                  test.rate>=0.12 &&
+                  allr.rate>=0.12;
+
+                specs.push({
+                  mode,path:path.id,pathName:path.name,step,
+                  train,test,all:allr,last500,stable
+                });
+              }
+            }
+          }
+
+          function scoreRow(r){
+            const sample=Math.min(1,r.test.triggers/50);
+            const stability=Math.min(r.train.rate,r.test.rate);
+            return (stability-BASELINE)*sample + (r.test.rate-BASELINE)*0.5;
+          }
+          const ranked=[...specs].sort((a,b)=>scoreRow(b)-scoreRow(a));
+
+          console.log('='.repeat(150));
+          console.log(`MATRIX TOP-3 · ЛЕСЕНКИ ${TARGET_TIME} · FULL ARCHIVE TEST`);
+          console.log(`Тиражей ${TARGET_TIME}: ${draws.length} · №${draws[0].id} → №${draws[draws.length-1].id}`);
+          console.log(`TRAIN 70%: ${split} тиражей · TEST 30%: ${draws.length-split} тиражей`);
+          console.log('База для одной заранее предсказанной цифры: 10%.');
+          console.log('STRICT = без перехода через 0/9; CIRCULAR = допускает 9→0→1 и 1→0→9.');
+          console.log('='.repeat(150));
+
+          console.log('\n--- ТОП-20 ПО КОНТРОЛЬНОЙ ЧАСТИ ---');
+          for(const r of ranked.slice(0,20)){
+            const flag=r.stable?'🔥 STABLE':'';
+            console.log(
+              `${r.path.padEnd(6)} ${String(r.step).padStart(2)} ${r.mode.padEnd(8)}`,
+              `TRAIN ${r.train.hits}/${r.train.triggers}=${pct(r.train.rate)}`,
+              `TEST ${r.test.hits}/${r.test.triggers}=${pct(r.test.rate)}`,
+              `ALL ${r.all.hits}/${r.all.triggers}=${pct(r.all.rate)}`,
+              `x${r.all.lift.toFixed(2)}`,
+              flag
+            );
+          }
+
+          console.log('\n--- ОСНОВНЫЕ ЛЕСЕНКИ ±1 И ПОВТОР 0 ---');
+          for(const r of specs.filter(x=>['D-ABC','D-CBA','V-A','V-B','V-C'].includes(x.path)&&[-1,0,1].includes(x.step)&&x.mode==='circular')){
+            console.log(
+              `${r.path.padEnd(6)} step=${String(r.step).padStart(2)}`,
+              `ALL ${r.all.hits}/${r.all.triggers}=${pct(r.all.rate)}`,
+              `TEST ${r.test.hits}/${r.test.triggers}=${pct(r.test.rate)}`,
+              `95%CI ${pct(r.all.ciLow)}..${pct(r.all.ciHigh)}`,
+              r.stable?'🔥':''
+            );
+          }
+
+          /*
+            Честный walk-forward "лесенка-сигнал":
+            на каждом историческом тираже выбираем только те паттерны,
+            которые ДО этого момента имели минимум 40 триггеров и
+            сглаженную точность выше 12%. Никакой будущий результат не виден.
+          */
+          const history=new Map();
+          const wfEvents=[];
+          function hkey(mode,path,step){return `${mode}|${path}|${step}`;}
+          function stateFor(k){
+            if(!history.has(k)) history.set(k,{triggers:0,hits:0});
+            return history.get(k);
+          }
+          function posterior(s){
+            // Beta prior around 10%, effective sample 30.
+            return (s.hits+3)/(s.triggers+30);
+          }
+
+          for(let i=2;i<draws.length;i++){
+            const target=draws[i];
+            const candidates=[];
+
+            for(const mode of ['strict','circular']){
+              for(const path of PATHS){
+                for(const step of STEPS){
+                  const d0=V(draws[i-2]),d1=V(draws[i-1]),d2=V(target);
+                  const x=d0[path.idx[0]],y=d1[path.idx[1]],z=d2[path.idx[2]];
+                  if(!follows(x,y,step,mode)) continue;
+                  const pred=expectedNext(y,step,mode);
+                  if(pred===null) continue;
+
+                  const k=hkey(mode,path.id,step);
+                  const s=stateFor(k);
+                  const post=posterior(s);
+
+                  if(s.triggers>=40 && post>=0.12){
+                    candidates.push({
+                      mode,path:path.id,pathName:path.name,step,
+                      targetPos:path.idx[2],pred,actual:z,
+                      hit:pred===z,
+                      posterior:post,
+                      priorTriggers:s.triggers,
+                      priorHits:s.hits
+                    });
+                  }
+                }
+              }
+            }
+
+            // Only strongest signal for each target position.
+            for(const p of [0,1,2]){
+              const c=candidates
+                .filter(x=>x.targetPos===p)
+                .sort((a,b)=>b.posterior-a.posterior || b.priorTriggers-a.priorTriggers)[0];
+              if(c){
+                wfEvents.push({
+                  id:target.id,date:target.date,time:target.time,
+                  position:POS[p],...c
+                });
+              }
+            }
+
+            // Update histories only AFTER predictions for current target are fixed.
+            for(const mode of ['strict','circular']){
+              for(const path of PATHS){
+                for(const step of STEPS){
+                  const d0=V(draws[i-2]),d1=V(draws[i-1]),d2=V(target);
+                  const x=d0[path.idx[0]],y=d1[path.idx[1]],z=d2[path.idx[2]];
+                  if(!follows(x,y,step,mode)) continue;
+                  const pred=expectedNext(y,step,mode);
+                  if(pred===null) continue;
+                  const s=stateFor(hkey(mode,path.id,step));
+                  s.triggers++;
+                  if(pred===z) s.hits++;
+                }
+              }
+            }
+          }
+
+          function sumEvents(list){
+            const out={signals:list.length,hits:0,byPos:{A:{n:0,h:0},B:{n:0,h:0},C:{n:0,h:0}}};
+            for(const e of list){
+              out.hits+=e.hit?1:0;
+              out.byPos[e.position].n++;
+              out.byPos[e.position].h+=e.hit?1:0;
+            }
+            out.rate=out.signals?out.hits/out.signals:0;
+            return out;
+          }
+          const wf=sumEvents(wfEvents);
+          const wfLast500=sumEvents(wfEvents.filter(e=>e.id>=draws[Math.max(0,draws.length-500)].id));
+
+          console.log('\n--- WALK-FORWARD: СИГНАЛ ЛЕСЕНКИ БЕЗ ПОДГЛЯДЫВАНИЯ ---');
+          console.log(`ВСЕ: ${wf.hits}/${wf.signals} = ${pct(wf.rate)} · база 10% · x${(wf.rate/0.10).toFixed(2)}`);
+          console.log(`Последние 500 тиражей ${TARGET_TIME}: ${wfLast500.hits}/${wfLast500.signals} = ${pct(wfLast500.rate)}`);
+          for(const p of POS){
+            const z=wf.byPos[p];
+            console.log(`${p}: ${z.h}/${z.n} = ${pct(z.n?z.h/z.n:0)}`);
+          }
+
+          /* Текущие незавершённые двухступенчатые сигналы после последнего 04:40 */
+          const current=[];
+          if(draws.length>=2){
+            const d0=V(draws[draws.length-2]),d1=V(draws[draws.length-1]);
+            for(const mode of ['strict','circular']){
+              for(const path of PATHS){
+                for(const step of STEPS){
+                  const x=d0[path.idx[0]],y=d1[path.idx[1]];
+                  if(!follows(x,y,step,mode)) continue;
+                  const pred=expectedNext(y,step,mode);
+                  if(pred===null) continue;
+                  const s=stateFor(hkey(mode,path.id,step));
+                  current.push({
+                    mode,path:path.id,pathName:path.name,step,
+                    from:[x,y],
+                    targetPosition:POS[path.idx[2]],
+                    prediction:pred,
+                    historyTriggers:s.triggers,
+                    historyHits:s.hits,
+                    historyRate:s.triggers?s.hits/s.triggers:0,
+                    posterior:posterior(s)
+                  });
+                }
+              }
+            }
+          }
+          current.sort((a,b)=>b.posterior-a.posterior || b.historyTriggers-a.historyTriggers);
+
+          console.log(`\n--- ТЕКУЩИЕ ДВУХСТУПЕНЧАТЫЕ СИГНАЛЫ ПОСЛЕ №${draws[draws.length-1].id} ${draws[draws.length-1].date} ${TARGET_TIME} ---`);
+          if(!current.length) console.log('Нет активных лесенок.');
+          else {
+            for(const c of current.slice(0,15)){
+              console.log(
+                `${c.path} ${c.mode} step=${c.step}: ${c.from.join('→')} →`,
+                `${c.targetPosition}=${c.prediction}`,
+                `история ${c.historyHits}/${c.historyTriggers}=${pct(c.historyRate)}`,
+                `posterior=${pct(c.posterior)}`
+              );
+            }
+          }
+
+          const stable=ranked.filter(r=>r.stable);
+          const report={
+            generatedAt:new Date().toISOString(),
+            targetTime:TARGET_TIME,
+            archive:{
+              total04_40:draws.length,
+              firstId:draws[0].id,
+              lastId:draws[draws.length-1].id,
+              firstDate:draws[0].date,
+              lastDate:draws[draws.length-1].date,
+              trainCount:split,
+              testCount:draws.length-split
+            },
+            baseline:BASELINE,
+            definitions:{
+              strict:'Без перехода через границу 0/9',
+              circular:'Циклические цифры, включая 9→0→1 и 1→0→9',
+              twoStep:'Первые две точки задают шаг; третья точка является честной проверкой прогноза',
+              paths:PATHS
+            },
+            stablePatterns:stable,
+            top20:ranked.slice(0,20),
+            allPatterns:specs,
+            walkForward:{
+              overall:wf,
+              last500:wfLast500,
+              events:wfEvents.slice(-500)
+            },
+            currentSignals:current
+          };
+          fs.writeFileSync('matrix-ladders-0440-report.json',JSON.stringify(report,null,2));
+          console.log('\nLADDERS 04:40 REPORT DONE');
+          NODE
+
+      - name: Upload ladders report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-ladders-0440-report
+          path: matrix-ladders-0440-report.json
+          if-no-files-found: error
