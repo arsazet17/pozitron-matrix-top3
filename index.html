@@ -75,11 +75,25 @@
     </section>
 
     <section id="horizontalView" class="view">
-      <section class="card">
-        <div class="section-title-row"><div><h2>ГОРИЗОНТАЛЬ ТОП-3</h2><p>каждая цифра — отдельная кнопка</p></div></div>
-        <div class="horizontal-wrap">
-          <table class="horizontal-table"><thead><tr><th>№</th><th>Дата / день</th><th>Время</th><th>Комбинация</th></tr></thead><tbody id="horizontalBody"></tbody></table>
+      <section class="card hm-card">
+        <div class="hm-head">
+          <div><h2>ГОРИЗОНТАЛЬ ТОП-3</h2><p>таблица переходов по времени · 1 / 2 / 3 столб и общая</p></div>
+          <div><div id="hmPageTitle" class="hm-page-title">1 СТОЛБ · A</div><div class="hm-swipe-hint">вкладки можно листать пальцем</div></div>
         </div>
+
+        <div id="hmPager" class="hm-pager" aria-label="Столбы TOP-3"></div>
+
+        <div class="hm-legend">
+          <span><i class="hm-dot hm-blue"></i>синий — повтор на вторые сутки</span>
+          <span><i class="hm-dot hm-green"></i>зелёный — вертикаль вправо</span>
+          <span><i class="hm-dot hm-orange"></i>оранжевый — вертикаль влево</span>
+          <span><i class="hm-dot hm-lightblue"></i>светло-голубой — повтор на третьи сутки</span>
+        </div>
+
+        <div id="horizontalMatrix"></div>
+
+        <!-- Старый tbody оставлен скрытым для полной совместимости с текущим app.js. -->
+        <table class="hm-legacy"><tbody id="horizontalBody"></tbody></table>
       </section>
     </section>
 
@@ -133,6 +147,7 @@
 
   <script src="top3-data.js?v=1"></script>
   <script src="app.js?v=1.1.2"></script>
+  <script src="horizontal-matrix.js?v=1.0.0"></script>
   <script src="lab-detector.js?v=1.3.2"></script>
 </body>
 </html>
