@@ -1,0 +1,34 @@
+name: Matrix TOP-3 · Sequence-6 v4 Single Digit Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'sequence6-v4-single-check.mjs'
+      - '.github/workflows/matrix-sequence6-v4-single-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run check
+        run: node sequence6-v4-single-check.mjs
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-sequence6-v4-single-report
+          path: |
+            sequence6-v4-single-report.json
+            sequence6-v4-single-report.md
+          retention-days: 30
