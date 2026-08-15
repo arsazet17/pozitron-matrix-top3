@@ -234,7 +234,7 @@ async function login(page) {
   if (!submit) throw new Error('OAuth-форма не отдала кнопку "Войти"');
   if (!(await submit.isEnabled().catch(()=>false))) throw new Error('кнопка "Войти" неактивна');
 
-  await submit.click({timeout:5000});
+  await submit.click({timeout:10000});
   await page.waitForLoadState('domcontentloaded',{timeout:15000}).catch(()=>{});
   await page.waitForTimeout(1800);
 
