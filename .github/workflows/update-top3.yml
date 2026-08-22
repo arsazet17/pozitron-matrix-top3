@@ -35,7 +35,30 @@ jobs:
         env:
           STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
           STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
-        run: node update-top3-stoloto-oauth.mjs
+        shell: bash
+        run: |
+          set -u
+          success=0
+
+          for attempt in 1 2 3 4 5; do
+            echo "=== STOLOTO STABILITY ATTEMPT $attempt/5 ==="
+
+            if node update-top3-stoloto-oauth.mjs; then
+              success=1
+              break
+            fi
+
+            echo "Столото пока нестабилен; полный цикл тройной проверки будет повторён."
+            if [ "$attempt" -lt 5 ]; then
+              echo "Повтор через 20 секунд..."
+              sleep 20
+            fi
+          done
+
+          if [ "$success" -ne 1 ]; then
+            echo "::error::Столото не дал стабильные три чтения после 5 полных попыток."
+            exit 1
+          fi
 
       - name: Commit verified live data safely
         env:
@@ -47,6 +70,26 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
+          retry_updater() {
+            local ok=0
+            for read_attempt in 1 2 3 4 5; do
+              echo "=== RECOMPUTE STOLOTO STABILITY $read_attempt/5 ==="
+              if node update-top3-stoloto-oauth.mjs; then
+                ok=1
+                break
+              fi
+              if [ "$read_attempt" -lt 5 ]; then
+                echo "Столото нестабилен при пересчёте; повтор через 20 секунд..."
+                sleep 20
+              fi
+            done
+
+            if [ "$ok" -ne 1 ]; then
+              echo "::error::Не удалось получить стабильные три чтения Столото при пересчёте."
+              return 1
+            fi
+          }
+
           for attempt in 1 2 3; do
             echo "=== SAFE SAVE ATTEMPT $attempt/3 ==="
             git fetch origin main
@@ -54,7 +97,7 @@ jobs:
             if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
               echo "main changed while updater was running — recomputing from fresh main"
               git reset --hard origin/main
-              node update-top3-stoloto-oauth.mjs
+              retry_updater
             fi
 
             if git diff --quiet -- top3-live.json; then
@@ -73,7 +116,7 @@ jobs:
             echo "main changed during push — retrying from latest main"
             git fetch origin main
             git reset --hard origin/main
-            node update-top3-stoloto-oauth.mjs
+            retry_updater
           done
 
           echo "Не удалось безопасно сохранить после 3 попыток"
