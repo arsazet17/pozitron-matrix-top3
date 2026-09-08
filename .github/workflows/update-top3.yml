@@ -2,8 +2,6 @@ name: Update TOP-3 data
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '2,12,22,32,42,52 * * * *'
 
 permissions:
   contents: write
@@ -21,6 +19,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: main
+
+      - name: Fresh main
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
 
       - uses: actions/setup-node@v4
         with:
@@ -60,64 +64,22 @@ jobs:
             exit 1
           fi
 
-      - name: Commit verified live data safely
-        env:
-          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
-          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
+      - name: Save verified TOP-3 facts
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          retry_updater() {
-            local ok=0
-            for read_attempt in 1 2 3 4 5; do
-              echo "=== RECOMPUTE STOLOTO STABILITY $read_attempt/5 ==="
-              if node update-top3-stoloto-oauth.mjs; then
-                ok=1
-                break
-              fi
-              if [ "$read_attempt" -lt 5 ]; then
-                echo "Столото нестабилен при пересчёте; повтор через 20 секунд..."
-                sleep 20
-              fi
-            done
+          if git diff --quiet -- top3-live.json; then
+            echo "Нет новых подтверждённых тиражей"
+            exit 0
+          fi
 
-            if [ "$ok" -ne 1 ]; then
-              echo "::error::Не удалось получить стабильные три чтения Столото при пересчёте."
-              return 1
-            fi
-          }
+          git add top3-live.json
+          git commit -m "Update TOP-3 from verified Stoloto OAuth"
 
-          for attempt in 1 2 3; do
-            echo "=== SAFE SAVE ATTEMPT $attempt/3 ==="
-            git fetch origin main
-
-            if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
-              echo "main changed while updater was running — recomputing from fresh main"
-              git reset --hard origin/main
-              retry_updater
-            fi
-
-            if git diff --quiet -- top3-live.json; then
-              echo "Нет новых подтверждённых тиражей"
-              exit 0
-            fi
-
-            git add top3-live.json
-            git commit -m "Update TOP-3 from verified Stoloto OAuth"
-
-            if git push origin HEAD:main; then
-              echo "TOP-3 update saved"
-              exit 0
-            fi
-
-            echo "main changed during push — retrying from latest main"
-            git fetch origin main
-            git reset --hard origin/main
-            retry_updater
-          done
-
-          echo "Не удалось безопасно сохранить после 3 попыток"
-          exit 1
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
