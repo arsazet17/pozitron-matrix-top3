@@ -1,20 +1,19 @@
 'use strict';
 
 /*
-  MATRIX TOP-3 · HORIZONTAL v1.4
-  New schedule above old archive.
-  Transition colors are calculated only inside the same schedule era.
+  MATRIX TOP-3 · HORIZONTAL v1.4.1
+  Fixed 48-column new schedule. Old era is unchanged.
 */
 (() => {
   const CUTOVER_ID=267756;
   const OLD_TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
+  const NEW_TIMES=['00:25','00:55','01:25','01:55','02:25','02:55','03:25','03:55','04:25','04:55','05:25','05:55','06:25','06:55','07:25','07:55','08:25','08:55','09:25','09:55','10:25','10:55','11:25','11:55','12:25','12:55','13:25','13:55','14:25','14:55','15:25','15:55','16:25','16:55','17:25','17:55','18:25','18:55','19:25','19:55','20:25','20:55','21:25','21:55','22:25','22:55','23:25','23:55'];
   const PAGES=['A','B','C','ALL'];
   const LABELS={A:'1 СТОЛБ',B:'2 СТОЛБ',C:'3 СТОЛБ',ALL:'3 СТОЛБА'};
   const POS={A:'a',B:'b',C:'c'};
   let page='A', touchX=null;
 
   const eraOf=d=>d.id>=CUTOVER_ID?'new':'old';
-  const uniq=draws=>[...new Set(draws.map(d=>d.time))].sort((a,b)=>a.localeCompare(b));
 
   function injectStyle(){
     if(document.getElementById('hm-inline-style'))return;
@@ -40,7 +39,8 @@
       .hm-era-divider:before,.hm-era-divider:after{content:"";flex:1;border-top:2px dashed #7751aa}
       .hm-era-divider span{padding:6px 10px;border:1px solid #7751aa;border-radius:9px;background:#23153d}
       .hm-table-wrap{overflow:auto;max-height:70vh;-webkit-overflow-scrolling:touch}
-      .hm-table{border-collapse:separate;border-spacing:0;min-width:980px;width:100%;table-layout:fixed;background:#f2f5f8;color:#07111c}
+      .hm-table{border-collapse:separate;border-spacing:0;min-width:4060px;width:max-content;table-layout:fixed;background:#f2f5f8;color:#07111c}
+      .hm-table.old-grid{min-width:980px}
       .hm-table th,.hm-table td{border-right:1px solid #8f9aa5;border-bottom:1px solid #8f9aa5;text-align:center;height:42px;padding:0;font-weight:850}
       .hm-table thead th{position:sticky;top:0;z-index:9;background:#ffe633;color:#101010;font-size:13px}
       .hm-date-head,.hm-date{position:sticky;left:0;z-index:11!important;background:#ffe633!important;color:#101010!important;min-width:116px;width:116px;padding:0 7px!important}
@@ -81,9 +81,9 @@
   }
   function eraHtml(era){
     const draws=rows(era);if(!draws.length)return'';
-    const times=era==='new'?uniq(draws):OLD_TIMES.slice(), map=drawMap(draws), gs=groups(draws);
-    let h=`<section class="hm-era ${era}"><div class="hm-era-head"><span class="hm-era-badge">${era==='new'?'НОВОЕ РАСПИСАНИЕ':'СТАРОЕ РАСПИСАНИЕ'}</span><b>${era==='new'?'№267756 и далее':'по №267755 включительно'}</b><span class="hm-era-sub">${era==='new'?'LIVE · свежая дата сверху':'архив без смешивания с новой сеткой'}</span></div>`;
-    h+=`<div class="hm-table-wrap"><table class="hm-table"><thead><tr><th class="hm-date-head">Дата / день</th>${times.map(t=>`<th class="hm-time">${t}</th>`).join('')}</tr></thead><tbody>`;
+    const times=era==='new'?NEW_TIMES.slice():OLD_TIMES.slice(), map=drawMap(draws), gs=groups(draws);
+    let h=`<section class="hm-era ${era}"><div class="hm-era-head"><span class="hm-era-badge">${era==='new'?'НОВОЕ РАСПИСАНИЕ':'СТАРОЕ РАСПИСАНИЕ'}</span><b>${era==='new'?'№267756 и далее':'по №267755 включительно'}</b><span class="hm-era-sub">${era==='new'?'48 тиражей · :25 / :55 · свежая дата сверху':'архив без смешивания с новой сеткой'}</span></div>`;
+    h+=`<div class="hm-table-wrap"><table class="hm-table ${era==='old'?'old-grid':''}"><thead><tr><th class="hm-date-head">Дата / день</th>${times.map(t=>`<th class="hm-time">${t}</th>`).join('')}</tr></thead><tbody>`;
     for(const [date] of gs){
       h+=`<tr><td class="hm-date">${date} <span class="weekday">${weekday(date)}</span></td>`;
       for(const t of times)h+=page==='ALL'?all(map,date,t,times):single(map,date,t,page,times);
