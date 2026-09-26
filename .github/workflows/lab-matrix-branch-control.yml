@@ -1,0 +1,30 @@
+name: LAB Matrix Branch Control
+
+on:
+  push:
+    branches:
+      - lab-matrix-branch-v1.7.1
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'lab-branch-core.js'
+      - 'lab-branch.js'
+      - 'lab-branch.css'
+      - 'sw.js'
+      - 'test-lab-branch.mjs'
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check
+        run: |
+          node --check lab-branch-core.js
+          node --check lab-branch.js
+          node --check test-lab-branch.mjs
+      - name: LAB branch control run
+        run: node test-lab-branch.mjs
