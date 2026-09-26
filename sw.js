@@ -1,6 +1,6 @@
-const CACHE='matrix-top3-v1.8.2-three-columns';
-const ASSETS=['./','./index.html','./styles.css','./lab-branch.css','./lab-three-columns.css','./app.js','./lab-branch-core.js','./lab-branch.js','./lab-three-columns-core.js','./lab-three-columns.js','./top3-data.js','./top3-live.json','./branch-archive-top3.json','./three-columns-archive-top3.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
-const NETWORK_FIRST=['/','/index.html','/app.js','/lab-branch-core.js','/lab-branch.js','/lab-three-columns-core.js','/lab-three-columns.js','/styles.css','/lab-branch.css','/lab-three-columns.css','/top3-live.json','/branch-archive-top3.json','/three-columns-archive-top3.json'];
+const CACHE='matrix-top3-v1.8.3-column-order';
+const ASSETS=['./','./index.html','./styles.css','./matrix-order.css','./lab-branch.css','./lab-three-columns.css','./app.js','./lab-branch-core.js','./lab-branch.js','./lab-three-columns-core.js','./lab-three-columns.js','./top3-data.js','./top3-live.json','./branch-archive-top3.json','./three-columns-archive-top3.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const NETWORK_FIRST=['/','/index.html','/app.js','/lab-branch-core.js','/lab-branch.js','/lab-three-columns-core.js','/lab-three-columns.js','/styles.css','/matrix-order.css','/lab-branch.css','/lab-three-columns.css','/top3-live.json','/branch-archive-top3.json','/three-columns-archive-top3.json'];
 
 self.addEventListener('install',e=>e.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())
