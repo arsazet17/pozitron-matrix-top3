@@ -8,7 +8,7 @@
   <title>Матрица ТОП-3</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css?v=1.4.1" />
-  <link rel="stylesheet" href="lab-branch.css?v=1.7.1" />
+  <link rel="stylesheet" href="lab-branch.css?v=1.7.2" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -17,7 +17,7 @@
     <div class="splash-sub">MATRIX TOP-3</div>
   </div>
   <main id="app" class="app hidden">
-    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.7.1 · LAB BRANCH</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
+    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.7.2 · LAB BRANCH</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
     <nav class="tabs" aria-label="Разделы"><button class="tab active" data-tab="matrix">Матрица ТОП-3</button><button class="tab" data-tab="horizontal">Горизонталь ТОП-3</button><button class="tab" data-tab="lab">🧪 LAB MATRIX</button></nav>
     <section class="controls card"><div class="control-group"><label>Показать дней</label><div id="dayButtons" class="segmented small"><button data-days="7">7</button><button class="active" data-days="14">14</button><button data-days="30">30</button><button data-days="60">60</button></div></div><div class="control-group"><label>Строк на экране</label><select id="rowLimit"><option>20</option><option selected>50</option><option>100</option><option>200</option></select></div><div class="control-group grow"><label>Активные цифры</label><div id="topDigitButtons" class="digit-strip"></div></div><button id="resetBtn" class="reset-btn">Сброс</button></section>
     <section id="matrixView" class="view active"><section class="card matrix-card"><div class="section-title-row"><div><h2>МАТРИЦА ТОП-3</h2><p>дата / день → время → № тиража → A B C</p></div><div id="positionMode" class="segmented mode"><button data-mode="A">A</button><button data-mode="B">B</button><button data-mode="C">C</button><button class="active" data-mode="ALL">ВСЕ</button></div></div><div class="legend"><span><i class="l low"></i>низкая</span><span><i class="l mid"></i>средняя</span><span><i class="l high"></i>высокая</span><span><i class="l hot"></i>очень высокая</span></div><div id="matrixScroll" class="matrix-scroll"><div id="matrixTable"></div></div></section><section class="bottom-grid"><div class="card active-card"><h3>Активные цифры</h3><div id="activeDigitButtons" class="active-digit-grid"></div><div id="selectedCount" class="muted">Выбрано: 0 / 10</div></div><div class="card stats-card"><h3>Частота выпадений</h3><div id="frequencyBars" class="bars"></div></div><div class="card status-card"><h3>Статус матрицы</h3><div id="matrixStatus"></div></div></section></section>
@@ -25,19 +25,21 @@
 
     <section id="labView" class="view">
       <section class="card lab-module">
-        <div class="lab-module-head"><div><h2>🧪 LAB MATRIX</h2><p>лаборатория независимых прогнозных модулей · каждый со своим frozen и архивом</p></div><span id="branchSelfTest" class="branch-selftest">SELF-TEST…</span></div>
-        <div id="branchForecast"></div>
+        <div class="lab-module-head"><div><h2>🧪 LAB MATRIX</h2><p>нажимай на карточку «Ветка на следующий тираж» — она раскрывается</p></div><span id="branchSelfTest" class="branch-selftest">SELF-TEST…</span></div>
+        <div id="branchForecast"><div class="branch-empty">Загрузка ветки…</div></div>
       </section>
 
       <section class="lab-modules">
-        <div class="lab-slot"><h3>🪜 Ступени</h3><p>Отдельный модуль. Движок, frozen и архив будут независимы от «Ветки».</p><span class="slot-badge">МЕСТО ЗАРЕЗЕРВИРОВАНО</span></div>
-        <div class="lab-slot"><h3>▥ Три столба</h3><p>Отдельный будущий модуль внутри LAB MATRIX. Никакого общего state с «Веткой».</p><span class="slot-badge">МЕСТО ЗАРЕЗЕРВИРОВАНО</span></div>
+        <div class="lab-slot disabled" aria-disabled="true"><h3>🪜 Ступени</h3><p>Пока не подключено. Здесь будет отдельный модуль со своим движком и архивом.</p><span class="slot-badge">ПОКА НЕАКТИВНО</span></div>
+        <div class="lab-slot disabled" aria-disabled="true"><h3>▥ Три столба</h3><p>Пока не подключено. Здесь будет отдельный модуль без общего state с «Веткой».</p><span class="slot-badge">ПОКА НЕАКТИВНО</span></div>
       </section>
 
       <section class="card branch-archive-card">
-        <div class="section-title-row"><div><h2>АРХИВ · ВЕТКА</h2><p>время постановки → целевой тираж → D/S → источник → frozen → факт → 0/2, 1/2, 2/2</p></div></div>
-        <div id="branchArchiveStats" class="branch-archive-stats"></div>
-        <div id="branchArchive" class="branch-archive"></div>
+        <div class="section-title-row"><div><h2>АРХИВ · ВЕТКА</h2><p>время постановки → целевой тираж → D/S → источник → frozen → факт → результат</p></div><button id="branchArchiveToggle" class="secondary-btn" type="button">Скрыть архив</button></div>
+        <div id="branchArchiveBody">
+          <div id="branchArchiveStats" class="branch-archive-stats"></div>
+          <div id="branchArchive" class="branch-archive"></div>
+        </div>
       </section>
 
       <div class="lab-legacy-runtime" aria-hidden="true">
@@ -57,7 +59,7 @@
   <script src="horizontal-matrix.js?v=1.4.3"></script>
   <script src="lab-detector.js?v=1.3.2"></script>
   <script src="archive-delete.js?v=1.0.0"></script>
-  <script src="lab-branch-core.js?v=1.7.1"></script>
-  <script src="lab-branch.js?v=1.7.1"></script>
+  <script src="lab-branch-core.js?v=1.7.2"></script>
+  <script src="lab-branch.js?v=1.7.2"></script>
 </body>
 </html>
