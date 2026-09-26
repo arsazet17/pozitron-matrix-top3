@@ -1,5 +1,8 @@
 'use strict';
 const LIVE_URL='./top3-live.json';
+const LIVE_REFRESH_MS=30_000;
+let liveRequest=null;
+let liveLoaded=false;
 const LAB_KEY='pozitron.labMatrix.predictions.v1';
 const ALGORITHM='LAB v1 · CENTER 8 · pressureTorque 369 · position ON/OFF';
 const OFFICIAL_TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
@@ -26,11 +29,50 @@ function sameMultiset(a,b){return [...a].sort().join('')===[...b].sort().join(''
 function rub(n){return `${Math.round(n).toLocaleString('ru-RU')} ₽`}
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 
-async function load(){
-  const seed=Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[];let live=[];
-  try{const r=await fetch(`${LIVE_URL}?t=${Date.now()}`,{cache:'no-store'});if(r.ok){const j=await r.json();live=j.draws||[];const official=Array.isArray(j.regularTimes)?j.regularTimes.filter(t=>OFFICIAL_TIMES.includes(t)):[];state.regularTimes=official.length===OFFICIAL_TIMES.length?[...official].sort():[...OFFICIAL_TIMES];state.updatedAt=j.updatedAt||null;state.source=j.source||'live';}}catch(e){state.regularTimes=[...OFFICIAL_TIMES]}
-  state.draws=unique([...live,...seed]);state.predictions=readPredictions();applyFacts(false);
-  $('#totalCount').textContent=state.draws.length.toLocaleString('ru-RU');updateStatus();renderAll();
+function load(){
+  if(liveRequest)return liveRequest;
+  liveRequest=refreshLive().finally(()=>{liveRequest=null});
+  return liveRequest;
+}
+async function refreshLive(){
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),12_000);
+  let changed=false;
+  try{
+    const r=await fetch(`${LIVE_URL}?t=${Date.now()}`,{cache:'no-store',signal:controller.signal});
+    if(!r.ok)throw new Error(`Live data: HTTP ${r.status}`);
+    const j=await r.json();
+    if(!Array.isArray(j.draws)||!j.draws.length||!j.draws.every(d=>d&&valid(normalizeRow(d))))throw new Error('Invalid live data');
+    const seed=Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[];
+    const draws=unique([...j.draws,...seed]);
+    // A stale CDN response must not remove already displayed results.
+    if(liveLoaded&&(draws[0].id<(state.draws[0]?.id||0)||Date.parse(j.updatedAt)<Date.parse(state.updatedAt)))return;
+    const official=Array.isArray(j.regularTimes)?j.regularTimes.filter(t=>OFFICIAL_TIMES.includes(t)):[];
+    const times=official.length===OFFICIAL_TIMES.length?[...official].sort():[...OFFICIAL_TIMES];
+    changed=JSON.stringify(draws)!==JSON.stringify(state.draws)||JSON.stringify(times)!==JSON.stringify(state.regularTimes);
+    state.draws=draws;state.regularTimes=times;
+    state.updatedAt=j.updatedAt||null;state.source=j.source||'live';
+  }catch(e){
+    // Keep the last good results on connection loss or an invalid response.
+    if(liveLoaded)return;
+    state.draws=unique(Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[]);
+  }finally{clearTimeout(timeout)}
+  const initial=!liveLoaded;
+  if(initial)state.predictions=readPredictions();
+  liveLoaded=true;
+  updateStatus();
+  if(!initial&&!changed)return;
+  const x=window.scrollX,y=window.scrollY;
+  applyFacts(false);
+  $('#totalCount').textContent=state.draws.length.toLocaleString('ru-RU');renderAll();
+  if(!initial)window.scrollTo({left:x,top:y,behavior:'instant'});
+}
+function startLiveRefresh(){
+  const refresh=()=>{if(!document.hidden)void load()};
+  setInterval(refresh,LIVE_REFRESH_MS);
+  document.addEventListener('visibilitychange',refresh);
+  window.addEventListener('online',refresh);
+  window.addEventListener('pageshow',e=>{if(e.persisted)refresh()});
 }
 function updateStatus(){let txt='Обновлено: архив';if(state.updatedAt){const d=new Date(state.updatedAt);txt=`Обновлено: ${d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`;}$('#updatedText').textContent=txt;}
 function filteredByDays(){if(!state.draws.length)return[];const latest=parseDate(state.draws[0].date);const min=new Date(latest);min.setUTCDate(min.getUTCDate()-(state.days-1));return state.draws.filter(d=>parseDate(d.date)>=min)}
@@ -179,4 +221,4 @@ function bind(){
   $('#saveForecastBtn').onclick=saveForecast;$('#checkResultsBtn').onclick=()=>applyFacts(true);
   $('#archiveFilters').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.archiveFilter=b.dataset.filter;renderArchive()});
 }
-window.addEventListener('load',async()=>{bind();await load();setTimeout(()=>{$('#splash').classList.add('hidden');$('#app').classList.remove('hidden')},650);if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})});
+window.addEventListener('load',async()=>{bind();await load();startLiveRefresh();setTimeout(()=>{$('#splash').classList.add('hidden');$('#app').classList.remove('hidden')},650);if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})});
