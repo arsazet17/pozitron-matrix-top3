@@ -1,4 +1,4 @@
-const CACHE='matrix-top3-v1.7.3-lab-branch';
+const CACHE='matrix-top3-v1.7.4-lab-branch-matrix';
 const ASSETS=['./','./index.html','./styles.css','./lab-branch.css','./app.js','./lab-detector.js','./lab-branch-core.js','./lab-branch.js','./top3-data.js','./top3-live.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 const NETWORK_FIRST=['/','/index.html','/app.js','/lab-detector.js','/lab-branch-core.js','/lab-branch.js','/styles.css','/lab-branch.css','/top3-live.json'];
 
@@ -13,20 +13,8 @@ self.addEventListener('fetch',e=>{
   const path=new URL(e.request.url).pathname;
   const networkFirst=NETWORK_FIRST.some(x=>path.endsWith(x));
   if(networkFirst){
-    e.respondWith(
-      fetch(e.request,{cache:'no-store'}).then(resp=>{
-        const copy=resp.clone();
-        caches.open(CACHE).then(c=>c.put(e.request,copy));
-        return resp
-      }).catch(()=>caches.match(e.request))
-    );
-    return
+    e.respondWith(fetch(e.request,{cache:'no-store'}).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return resp}).catch(()=>caches.match(e.request)));
+    return;
   }
-  e.respondWith(
-    caches.match(e.request).then(r=>r||fetch(e.request).then(resp=>{
-      const copy=resp.clone();
-      caches.open(CACHE).then(c=>c.put(e.request,copy));
-      return resp
-    }))
-  );
+  e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return resp})));
 });
