@@ -37,10 +37,13 @@ const html=fs.readFileSync('index.html','utf8');
 const js=fs.readFileSync('lab-branch.js','utf8');
 const css=fs.readFileSync('lab-branch.css','utf8');
 const sw=fs.readFileSync('sw.js','utf8');
-for(const needle of ['id="branchForecast"','id="branchArchive"','Ступени','Три столба','lab-branch-core.js','lab-branch.js'])assert.ok(html.includes(needle),`index missing ${needle}`);
-for(const needle of ['pozitron.lab.branch.archive.v1','status:\'pending\'','closePending','Frozen не переписывается','branchArrowToggle'])assert.ok(js.includes(needle),`branch js missing ${needle}`);
+for(const needle of ['id="branchForecast"','id="branchArchive"','id="branchArchiveToggle"','Ступени','Три столба','ПОКА НЕАКТИВНО','lab-branch-core.js?v=1.7.2','lab-branch.js?v=1.7.2'])assert.ok(html.includes(needle),`index missing ${needle}`);
+for(const needle of ['pozitron.lab.branch.archive.v1','status:\'pending\'','closePending','Frozen не переписывается','branchArrowToggle','branchArchiveToggle','typeof state===\'undefined\''])assert.ok(js.includes(needle),`branch js missing ${needle}`);
+assert.ok(!js.includes('!window.state'), 'regression: top-level const state is not a window property');
 assert.ok(css.includes('.lab-legacy-runtime{display:none!important}'));
+assert.ok(css.includes('.lab-slot.disabled'));
+assert.ok(sw.includes("matrix-top3-v1.7.2-lab-branch"));
 for(const asset of ['./lab-branch.css','./lab-branch-core.js','./lab-branch.js'])assert.ok(sw.includes(asset),`sw missing ${asset}`);
 
 console.log('LAB MATRIX BRANCH CONTROL: PASS');
-console.log(`Core ${Core.VERSION}; D/date and S/time matrix checked; module/archive/cache integration present.`);
+console.log(`Core ${Core.VERSION}; D/date, S/time, live-state guard, clickable Branch, archive toggle and cache integration checked.`);
