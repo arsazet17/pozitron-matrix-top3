@@ -47,18 +47,20 @@ jobs:
             [ "$attempt" -lt 3 ] && sleep 20
           done
           [ "$success" -eq 1 ] || exit 1
-      - name: Save verified TOP-3 facts
+      - name: Close branch fact and freeze next target
+        run: node scripts/branch-archive-top3-server.cjs
+      - name: Save verified TOP-3 facts and branch archive together
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- top3-live.json; then
-            echo "Нет новых подтверждённых тиражей"
+          if git diff --quiet -- top3-live.json branch-archive-top3.json; then
+            echo "TOP-3 facts and branch archive are already current"
             exit 0
           fi
-          git add top3-live.json
-          git commit -m "Update TOP-3 from new Stoloto source"
+          git add top3-live.json branch-archive-top3.json
+          git commit -m "Update TOP-3 facts and branch archive"
           git fetch origin main
           git rebase origin/main
           git push origin HEAD:main
