@@ -9,6 +9,7 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css?v=1.4.1" />
   <link rel="stylesheet" href="lab-branch.css?v=1.8.0" />
+  <link rel="stylesheet" href="lab-three-columns.css?v=1.0.0" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -17,7 +18,7 @@
     <div class="splash-sub">MATRIX TOP-3</div>
   </div>
   <main id="app" class="app hidden">
-    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.8.1 · LAB CLEAN</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
+    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.8.2 · LAB THREE COLUMNS</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
     <nav class="tabs" aria-label="Разделы"><button class="tab active" data-tab="matrix">Матрица ТОП-3</button><button class="tab" data-tab="horizontal">Горизонталь ТОП-3</button><button class="tab" data-tab="lab">🧪 LAB MATRIX</button></nav>
     <section class="controls card"><div class="control-group"><label>Показать дней</label><div id="dayButtons" class="segmented small"><button data-days="7">7</button><button class="active" data-days="14">14</button><button data-days="30">30</button><button data-days="60">60</button></div></div><div class="control-group"><label>Строк на экране</label><select id="rowLimit"><option>20</option><option selected>50</option><option>100</option><option>200</option></select></div><div class="control-group grow"><label>Активные цифры</label><div id="topDigitButtons" class="digit-strip"></div></div><button id="resetBtn" class="reset-btn">Сброс</button></section>
     <section id="matrixView" class="view active"><section class="card matrix-card"><div class="section-title-row"><div><h2>МАТРИЦА ТОП-3</h2><p>дата / день → время → № тиража → A B C</p></div><div id="positionMode" class="segmented mode"><button data-mode="A">A</button><button data-mode="B">B</button><button data-mode="C">C</button><button class="active" data-mode="ALL">ВСЕ</button></div></div><div class="legend"><span><i class="l low"></i>низкая</span><span><i class="l mid"></i>средняя</span><span><i class="l high"></i>высокая</span><span><i class="l hot"></i>очень высокая</span></div><div id="matrixScroll" class="matrix-scroll"><div id="matrixTable"></div></div></section><section class="bottom-grid"><div class="card active-card"><h3>Активные цифры</h3><div id="activeDigitButtons" class="active-digit-grid"></div><div id="selectedCount" class="muted">Выбрано: 0 / 10</div></div><div class="card stats-card"><h3>Частота выпадений</h3><div id="frequencyBars" class="bars"></div></div><div class="card status-card"><h3>Статус матрицы</h3><div id="matrixStatus"></div></div></section></section>
@@ -31,7 +32,18 @@
 
       <section class="lab-modules">
         <div class="lab-slot disabled" aria-disabled="true"><h3>🪜 Ступени</h3><p>Пока не подключено. Здесь будет отдельный модуль со своим движком и архивом.</p><span class="slot-badge">ПОКА НЕАКТИВНО</span></div>
-        <div class="lab-slot disabled" aria-disabled="true"><h3>▥ Три столба</h3><p>Пока не подключено. Здесь будет отдельный модуль без общего state с «Веткой».</p><span class="slot-badge">ПОКА НЕАКТИВНО</span></div>
+        <section class="tc-slot" aria-label="Три столба">
+          <div class="tc-slot-head"><div><h3>▥ Три столба</h3><p>повтор + следующий тираж · вертикаль D2 · отдельный архив</p></div><span id="threeColumnsSelfTest" class="tc-selftest">SELF-TEST…</span></div>
+          <div id="threeColumnsForecast"><div class="tc-empty">Загрузка модуля…</div></div>
+        </section>
+      </section>
+
+      <section class="card tc-archive-card">
+        <div class="section-title-row"><div><h2>АРХИВ · ТРИ СТОЛБА</h2><p>SERVER · three-columns-archive-top3.json · отдельный от «Ветки»</p></div><button id="threeColumnsArchiveToggle" class="secondary-btn" type="button" aria-expanded="false" aria-controls="threeColumnsArchiveBody">Открыть архив</button></div>
+        <div id="threeColumnsArchiveBody" hidden>
+          <div id="threeColumnsArchiveStats" class="tc-archive-stats"></div>
+          <div id="threeColumnsArchive" class="tc-archive"></div>
+        </div>
       </section>
 
       <section class="card branch-archive-card">
@@ -47,10 +59,12 @@
   </main>
   <script src="top3-data.js?v=1"></script>
   <script src="schedule-scroll.js?v=1.4.3"></script>
-  <script src="app.js?v=1.8.1"></script>
+  <script src="app.js?v=1.8.2"></script>
   <script src="schedule-era.js?v=1.4.3"></script>
   <script src="horizontal-matrix.js?v=1.4.3"></script>
   <script src="lab-branch-core.js?v=1.8.0"></script>
   <script src="lab-branch.js?v=1.8.0"></script>
+  <script src="lab-three-columns-core.js?v=1.0.0"></script>
+  <script src="lab-three-columns.js?v=1.0.0"></script>
 </body>
 </html>

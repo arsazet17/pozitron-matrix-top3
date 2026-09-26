@@ -1,0 +1,66 @@
+name: TOP-3 · THREE COLUMNS SERVER ARCHIVE
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - "top3-live.json"
+      - "lab-three-columns-core.js"
+      - "scripts/three-columns-archive-top3-server.cjs"
+      - ".github/workflows/update-top3.yml"
+      - ".github/workflows/update-top3-backup.yml"
+      - ".github/workflows/three-columns-archive-top3-server.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: top3-three-columns-server-archive
+  cancel-in-progress: false
+
+jobs:
+  three-columns-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate three-columns archive generator
+        run: |
+          node --check lab-three-columns-core.js
+          node --check scripts/three-columns-archive-top3-server.cjs
+          node -e "const c=require('./lab-three-columns-core.js'); const t=c.selfTest(); if(!t.ok){console.error(t);process.exit(1)}; console.log(t)"
+      - name: Recalculate and publish shared three-columns archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            echo "THREE COLUMNS ARCHIVE attempt $attempt"
+            git fetch origin main
+            git reset --hard origin/main
+            node scripts/three-columns-archive-top3-server.cjs
+            git add three-columns-archive-top3.json
+            if git diff --cached --quiet; then
+              echo "Three-columns archive already current"
+              exit 0
+            fi
+            git commit -m "Update shared TOP-3 three-columns archive"
+            if git push origin HEAD:main; then
+              echo "Three-columns archive published"
+              exit 0
+            fi
+            echo "Push conflict — recalculate from newest main"
+            sleep 2
+          done
+          echo "Three-columns archive publish failed after 3 recalculations" >&2
+          exit 1
