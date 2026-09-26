@@ -1,4 +1,4 @@
-' strict';
+'use strict';
 
 (() => {
   const CORE=window.LabBranchCore;
@@ -6,6 +6,7 @@
   const ARCHIVE_KEY='pozitron.lab.branch.archive.v1';
   const UI_KEY='pozitron.lab.branch.ui.v1';
   const VERSION='LAB BRANCH v1.7.1';
+  const CUTOVER_ID=267756;
   let lastRenderKey='';
 
   const $=s=>document.querySelector(s);
@@ -15,16 +16,35 @@
   function fmtCombo(a){return (a||[]).join(' · ')}
   function fmtBranch(d,s){return `D${d} S${s>0?'+':''}${s}`}
   function isoLocal(iso){try{return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch(_){return iso}}
-  function drawMap(){return new Map((state.draws||[]).map(d=>[`${d.date}|${d.time}`,d]))}
+  function readArchive(){const a=readJson(ARCHIVE_KEY,[]);return Array.isArray(a)?a:[]}
+
   function currentTimes(target){
-    const inferred=CORE.inferTimes(state.draws||[],target?.date);
-    if(inferred.length>=4)return inferred;
-    try{return CORE.normalizeTimes(scheduleTimes())}catch(_){return inferred}
+    try{
+      const scheduled=CORE.normalizeTimes(scheduleTimes());
+      if(scheduled.length>=4)return scheduled;
+    }catch(_){/* fallback below */}
+    return CORE.inferTimes(state.draws||[],target?.date);
   }
+  function branchTargetDraw(){
+    const list=(state.draws||[]).filter(d=>Number(d.id)>=CUTOVER_ID).sort((a,b)=>Number(b.id)-Number(a.id));
+    const latest=list[0]||(state.draws||[])[0];
+    if(!latest)return null;
+    const times=currentTimes(latest),i=times.indexOf(latest.time);
+    if(i<0||!times.length)return null;
+    if(i<times.length-1)return {id:Number(latest.id)+1,date:latest.date,time:times[i+1]};
+    return {id:Number(latest.id)+1,date:CORE.addDays(latest.date,1),time:times[0]};
+  }
+  function targetEpoch(t){
+    if(!t?.date||!t?.time)return NaN;
+    const [d,m,y]=String(t.date).split('.').map(Number),[h,n]=String(t.time).split(':').map(Number);
+    if([d,m,y,h,n].some(x=>!Number.isFinite(x)))return NaN;
+    const yyyy=y<100?2000+y:y;
+    return Date.parse(`${String(yyyy).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}T${String(h).padStart(2,'0')}:${String(n).padStart(2,'0')}:00+03:00`);
+  }
+  function targetOpen(t){const ms=targetEpoch(t);return Number.isFinite(ms)&&Date.now()<ms}
   function findFact(target){
     return (state.draws||[]).find(d=>(target.id&&Number(d.id)===Number(target.id))||(d.date===target.date&&d.time===target.time))||null;
   }
-  function readArchive(){const a=readJson(ARCHIVE_KEY,[]);return Array.isArray(a)?a:[]}
   function closePending(records){
     let changed=false;
     for(const r of records){
@@ -36,12 +56,13 @@
     return changed;
   }
   function freezeCurrent(records){
-    let target;try{target=targetDraw()}catch(_){target=null}
-    if(!target||!(state.draws||[]).length)return {records,plan:null,frozen:null,changed:false};
-    const times=currentTimes(target),plan=CORE.forecastPlan(state.draws,target,times);
-    if(!plan)return {records,plan:null,frozen:null,changed:false};
+    const target=branchTargetDraw();
+    if(!target||!(state.draws||[]).length)return {records,plan:null,frozen:null,changed:false,reason:'no-target'};
     const key=targetKey(target),existing=records.find(x=>x.key===key);
-    if(existing)return {records,plan,frozen:existing,changed:false};
+    const times=currentTimes(target),plan=CORE.forecastPlan(state.draws,target,times);
+    if(existing)return {records,plan,frozen:existing,changed:false,reason:'existing'};
+    if(!targetOpen(target))return {records,plan,frozen:null,changed:false,reason:'target-closed'};
+    if(!plan)return {records,plan:null,frozen:null,changed:false,reason:'no-plan'};
     const p=plan.primary;
     const frozen={
       key,status:'pending',savedAt:new Date().toISOString(),engine:VERSION,
@@ -54,13 +75,13 @@
       extended:p.extended?{d:p.extended.d,s:p.extended.s,hit:p.extended.hit,lastSource:p.extended.lastSource,nextSource:{date:p.extended.nextSource.date,time:p.extended.nextSource.time,combo:[...p.extended.nextSource.combo]}}:null,
       ranking:p.ranking
     };
-    records.unshift(frozen);return {records,plan,frozen,changed:true};
+    records.unshift(frozen);return {records,plan,frozen,changed:true,reason:'frozen'};
   }
   function sync(){
     const records=readArchive();let changed=closePending(records);
     const x=freezeCurrent(records);changed=changed||x.changed;
     if(changed)writeJson(ARCHIVE_KEY,records);
-    return {records,plan:x.plan,frozen:x.frozen||records.find(r=>r.status==='pending')||null};
+    return {records,plan:x.plan,frozen:x.frozen,reason:x.reason};
   }
   function resultClass(r){if(r.status==='pending')return'pending';if(r.hit===2)return'hit';if(r.hit===1)return'part';return'miss'}
   function archiveStats(records){
@@ -93,9 +114,12 @@
       <rect x="600" y="30" rx="16" width="140" height="86" class="branch-svg-card target"/><text x="618" y="58" class="branch-svg-label">ЦЕЛЬ</text><text x="618" y="84" class="branch-svg-main">${r.target.time}</text><text x="618" y="106" class="branch-svg-main">${fmtCombo(r.prediction)}</text>
     </svg></div>`;
   }
-  function renderForecast(frozen){
+  function renderForecast(frozen,reason){
     const root=$('#branchForecast');if(!root)return;
-    if(!frozen){root.innerHTML='<div class="branch-empty">Недостаточно данных для постановки.</div>';return}
+    if(!frozen){
+      const msg=reason==='target-closed'?'Новый frozen не создан: время следующего тиража уже наступило, ждём факт.':'Недостаточно данных для постановки.';
+      root.innerHTML=`<div class="branch-empty">${msg}</div>`;return
+    }
     const ui=readJson(UI_KEY,{collapsed:true,arrows:false});
     const s0=frozen.s0;
     root.innerHTML=`
@@ -125,14 +149,14 @@
     const at=$('#branchArrowToggle');if(at)at.onclick=()=>{const u=readJson(UI_KEY,{collapsed:false,arrows:false});u.arrows=!u.arrows;u.collapsed=false;writeJson(UI_KEY,u);render()};
   }
   function render(){
-    if(!window.state||!Array.isArray(state.draws))return;
-    const {records,frozen}=sync();
-    const rk=`${state.draws[0]?.id||0}|${records.length}|${frozen?.key||''}|${readJson(UI_KEY,{}).collapsed}|${readJson(UI_KEY,{}).arrows}`;
+    if(typeof state==='undefined'||!Array.isArray(state.draws))return;
+    const {records,frozen,reason}=sync();
+    const rk=`${state.draws[0]?.id||0}|${records.length}|${frozen?.key||''}|${reason||''}|${readJson(UI_KEY,{}).collapsed}|${readJson(UI_KEY,{}).arrows}`;
     if(rk===lastRenderKey&&$('#branchForecast')?.children.length)return;
-    lastRenderKey=rk;renderForecast(frozen);renderArchive(records);
+    lastRenderKey=rk;renderForecast(frozen,reason);renderArchive(records);
     const test=CORE.selfTest(),badge=$('#branchSelfTest');if(badge){badge.textContent=test.pass?'SELF-TEST PASS':'SELF-TEST FAIL';badge.className=`branch-selftest ${test.pass?'pass':'fail'}`}
   }
   function boot(){render();setInterval(render,2500);const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>setTimeout(render,1200));}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
-  window.LabBranch={render,readArchive,selfTest:CORE.selfTest};
+  window.LabBranch={render,readArchive,selfTest:CORE.selfTest,targetOpen,branchTargetDraw};
 })();
