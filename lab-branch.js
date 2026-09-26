@@ -5,7 +5,7 @@
   if(!CORE)return;
   const ARCHIVE_KEY='pozitron.lab.branch.archive.v1';
   const UI_KEY='pozitron.lab.branch.ui.v1';
-  const VERSION='LAB BRANCH v1.7.1';
+  const VERSION='LAB BRANCH v1.7.2';
   const CUTOVER_ID=267756;
   let lastRenderKey='';
 
@@ -88,9 +88,9 @@
     const closed=records.filter(r=>r.status==='closed');return {total:records.length,pending:records.filter(r=>r.status==='pending').length,hit:closed.filter(r=>r.hit===2).length,part:closed.filter(r=>r.hit===1).length,miss:closed.filter(r=>r.hit===0).length};
   }
   function renderArchive(records){
-    const el=$('#branchArchive');if(!el)return;const st=archiveStats(records);
-    $('#branchArchiveStats').innerHTML=`<span>Всего <b>${st.total}</b></span><span class="ok">2/2 <b>${st.hit}</b></span><span class="part">1/2 <b>${st.part}</b></span><span class="bad">0/2 <b>${st.miss}</b></span><span>Ожидают <b>${st.pending}</b></span>`;
-    if(!records.length){el.innerHTML='<div class="branch-empty">Архив пока пуст.</div>';return}
+    const el=$('#branchArchive'),stats=$('#branchArchiveStats');if(!el||!stats)return;const st=archiveStats(records);
+    stats.innerHTML=`<span>Всего <b>${st.total}</b></span><span class="ok">2/2 <b>${st.hit}</b></span><span class="part">1/2 <b>${st.part}</b></span><span class="bad">0/2 <b>${st.miss}</b></span><span>Ожидают <b>${st.pending}</b></span>`;
+    if(!records.length){el.innerHTML='<div class="branch-empty">Архив пока пуст. Первая запись появится автоматически для следующего тиража.</div>';return}
     el.innerHTML=records.slice(0,60).map(r=>{
       const cls=resultClass(r),status=r.status==='pending'?'ОЖИДАЕТ':r.result;
       return `<article class="branch-archive-row ${cls}">
@@ -117,15 +117,15 @@
   function renderForecast(frozen,reason){
     const root=$('#branchForecast');if(!root)return;
     if(!frozen){
-      const msg=reason==='target-closed'?'Новый frozen не создан: время следующего тиража уже наступило, ждём факт.':'Недостаточно данных для постановки.';
+      const msg=reason==='target-closed'?'Новый frozen не создан: время следующего тиража уже наступило, ждём факт.':'Жду данные для расчёта следующего тиража.';
       root.innerHTML=`<div class="branch-empty">${msg}</div>`;return
     }
-    const ui=readJson(UI_KEY,{collapsed:true,arrows:false});
+    const ui=readJson(UI_KEY,{collapsed:true,arrows:false,archiveCollapsed:false});
     const s0=frozen.s0;
     root.innerHTML=`
       <div class="branch-card ${ui.collapsed?'collapsed':''}">
-        <button id="branchToggle" class="branch-summary" type="button">
-          <span><b>🧭 Ветка на следующий тираж</b><small>цель ${frozen.target.date} · ${frozen.target.time}</small></span>
+        <button id="branchToggle" class="branch-summary" type="button" aria-expanded="${!ui.collapsed}">
+          <span><b>🧭 Ветка на следующий тираж</b><small>НАЖАТЬ, ЧТОБЫ ${ui.collapsed?'РАСКРЫТЬ':'СВЕРНУТЬ'} · цель ${frozen.target.date} · ${frozen.target.time}</small></span>
           <span class="branch-summary-center"><strong>${fmtBranch(frozen.branch.d,frozen.branch.s)}</strong><em>${frozen.decision} · streak ${frozen.streak}</em></span>
           <span class="branch-picks">${frozen.prediction.map(n=>`<i>${n}</i>`).join('')}</span>
           <span class="branch-chevron">${ui.collapsed?'⌄':'⌃'}</span>
@@ -145,18 +145,26 @@
           ${ui.arrows?arrowSvg(frozen):''}
         </div>
       </div>`;
-    $('#branchToggle').onclick=()=>{const u=readJson(UI_KEY,{collapsed:true,arrows:false});u.collapsed=!u.collapsed;writeJson(UI_KEY,u);render()};
-    const at=$('#branchArrowToggle');if(at)at.onclick=()=>{const u=readJson(UI_KEY,{collapsed:false,arrows:false});u.arrows=!u.arrows;u.collapsed=false;writeJson(UI_KEY,u);render()};
+    $('#branchToggle').onclick=()=>{const u=readJson(UI_KEY,{collapsed:true,arrows:false,archiveCollapsed:false});u.collapsed=!u.collapsed;writeJson(UI_KEY,u);lastRenderKey='';render()};
+    const at=$('#branchArrowToggle');if(at)at.onclick=()=>{const u=readJson(UI_KEY,{collapsed:false,arrows:false,archiveCollapsed:false});u.arrows=!u.arrows;u.collapsed=false;writeJson(UI_KEY,u);lastRenderKey='';render()};
+  }
+  function bindArchiveToggle(){
+    const btn=$('#branchArchiveToggle'),body=$('#branchArchiveBody');if(!btn||!body)return;
+    const ui=readJson(UI_KEY,{collapsed:true,arrows:false,archiveCollapsed:false});
+    body.classList.toggle('hidden',!!ui.archiveCollapsed);
+    btn.textContent=ui.archiveCollapsed?'Открыть архив':'Скрыть архив';
+    btn.onclick=()=>{const u=readJson(UI_KEY,{collapsed:true,arrows:false,archiveCollapsed:false});u.archiveCollapsed=!u.archiveCollapsed;writeJson(UI_KEY,u);lastRenderKey='';render()};
   }
   function render(){
     if(typeof state==='undefined'||!Array.isArray(state.draws))return;
     const {records,frozen,reason}=sync();
-    const rk=`${state.draws[0]?.id||0}|${records.length}|${frozen?.key||''}|${reason||''}|${readJson(UI_KEY,{}).collapsed}|${readJson(UI_KEY,{}).arrows}`;
+    const ui=readJson(UI_KEY,{collapsed:true,arrows:false,archiveCollapsed:false});
+    const rk=`${state.draws[0]?.id||0}|${records.length}|${frozen?.key||''}|${reason||''}|${ui.collapsed}|${ui.arrows}|${ui.archiveCollapsed}`;
     if(rk===lastRenderKey&&$('#branchForecast')?.children.length)return;
-    lastRenderKey=rk;renderForecast(frozen,reason);renderArchive(records);
+    lastRenderKey=rk;renderForecast(frozen,reason);renderArchive(records);bindArchiveToggle();
     const test=CORE.selfTest(),badge=$('#branchSelfTest');if(badge){badge.textContent=test.pass?'SELF-TEST PASS':'SELF-TEST FAIL';badge.className=`branch-selftest ${test.pass?'pass':'fail'}`}
   }
-  function boot(){render();setInterval(render,2500);const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>setTimeout(render,1200));}
+  function boot(){render();setInterval(render,2500);const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>{lastRenderKey='';setTimeout(render,1200)});}
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
   window.LabBranch={render,readArchive,selfTest:CORE.selfTest,targetOpen,branchTargetDraw};
 })();
