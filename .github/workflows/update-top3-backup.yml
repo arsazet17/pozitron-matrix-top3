@@ -35,7 +35,7 @@ jobs:
           STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
         run: node update-top3-stoloto-oauth.mjs
 
-      - name: Commit verified live data safely
+      - name: Commit verified live data and branch archive safely
         env:
           STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
           STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
@@ -54,13 +54,15 @@ jobs:
               node update-top3-stoloto-oauth.mjs
             fi
 
-            if git diff --quiet -- top3-live.json; then
-              echo "Нет новых подтверждённых тиражей"
+            node scripts/branch-archive-top3-server.cjs
+
+            if git diff --quiet -- top3-live.json branch-archive-top3.json; then
+              echo "TOP-3 facts and branch archive are already current"
               exit 0
             fi
 
-            git add top3-live.json
-            git commit -m "Update TOP-3 from verified Stoloto OAuth (backup)"
+            git add top3-live.json branch-archive-top3.json
+            git commit -m "Update TOP-3 facts and branch archive (backup)"
 
             if git push origin HEAD:main; then
               exit 0

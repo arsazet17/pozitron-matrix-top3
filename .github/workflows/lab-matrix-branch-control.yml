@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - remove-lab-legacy-v1.8.1
+      - fix-branch-archive-sync-v1.8.2
   pull_request:
     paths:
       - 'index.html'
@@ -19,6 +19,8 @@ on:
       - 'test-lab-interactions.cjs'
       - '.github/workflows/lab-matrix-branch-control.yml'
       - '.github/workflows/branch-archive-top3-server.yml'
+      - '.github/workflows/update-top3.yml'
+      - '.github/workflows/update-top3-backup.yml'
 
 jobs:
   control:
