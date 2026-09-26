@@ -1,0 +1,67 @@
+name: TOP-3 · BRANCH SERVER ARCHIVE
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/5 * * * *"
+  push:
+    branches: [main]
+    paths:
+      - "top3-live.json"
+      - "lab-branch-core.js"
+      - "scripts/branch-archive-top3-server.cjs"
+      - ".github/workflows/branch-archive-top3-server.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: top3-branch-server-archive
+  cancel-in-progress: false
+
+jobs:
+  branch-archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Validate branch archive generator
+        run: |
+          node --check lab-branch-core.js
+          node --check scripts/branch-archive-top3-server.cjs
+      - name: Recalculate and publish shared branch archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          for attempt in 1 2 3; do
+            echo "BRANCH ARCHIVE attempt $attempt"
+            git fetch origin main
+            git reset --hard origin/main
+            node scripts/branch-archive-top3-server.cjs
+
+            git add branch-archive-top3.json
+            if git diff --cached --quiet; then
+              echo "Branch archive already current"
+              exit 0
+            fi
+
+            git commit -m "Update shared TOP-3 branch archive"
+            if git push origin HEAD:main; then
+              echo "Branch archive published"
+              exit 0
+            fi
+            echo "Push conflict — recalculate from newest main"
+            sleep 2
+          done
+
+          echo "Branch archive publish failed after 3 recalculations" >&2
+          exit 1
