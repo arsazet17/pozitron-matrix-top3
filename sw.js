@@ -1,6 +1,6 @@
-const CACHE='matrix-top3-v1.7.4-lab-branch-matrix';
-const ASSETS=['./','./index.html','./styles.css','./lab-branch.css','./app.js','./lab-detector.js','./lab-branch-core.js','./lab-branch.js','./top3-data.js','./top3-live.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
-const NETWORK_FIRST=['/','/index.html','/app.js','/lab-detector.js','/lab-branch-core.js','/lab-branch.js','/styles.css','/lab-branch.css','/top3-live.json'];
+const CACHE='matrix-top3-v1.8.0-lab-branch-server-archive';
+const ASSETS=['./','./index.html','./styles.css','./lab-branch.css','./app.js','./lab-detector.js','./lab-branch-core.js','./lab-branch.js','./top3-data.js','./top3-live.json','./branch-archive-top3.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const NETWORK_FIRST=['/','/index.html','/app.js','/lab-detector.js','/lab-branch-core.js','/lab-branch.js','/styles.css','/lab-branch.css','/top3-live.json','/branch-archive-top3.json'];
 
 self.addEventListener('install',e=>e.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())

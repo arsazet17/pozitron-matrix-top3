@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - lab-matrix-branch-v1.7.1
+      - lab-branch-server-archive-v1.8.0
   pull_request:
     paths:
       - 'index.html'
@@ -12,9 +12,12 @@ on:
       - 'lab-branch.js'
       - 'lab-branch.css'
       - 'sw.js'
+      - 'branch-archive-top3.json'
+      - 'scripts/branch-archive-top3-server.cjs'
       - 'test-lab-branch.mjs'
       - 'test-lab-interactions.cjs'
       - '.github/workflows/lab-matrix-branch-control.yml'
+      - '.github/workflows/branch-archive-top3-server.yml'
 
 jobs:
   control:
@@ -28,7 +31,9 @@ jobs:
         run: |
           node --check lab-branch-core.js
           node --check lab-branch.js
+          node --check scripts/branch-archive-top3-server.cjs
           node --check test-lab-branch.mjs
+          node --check test-lab-interactions.cjs
       - name: LAB branch control run
         run: node test-lab-branch.mjs
       - name: Install browser test dependencies

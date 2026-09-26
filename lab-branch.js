@@ -3,11 +3,15 @@
 (() => {
   const CORE=window.LabBranchCore;
   if(!CORE)return;
-  const ARCHIVE_KEY='pozitron.lab.branch.archive.v1';
   const UI_KEY='pozitron.lab.branch.ui.v1';
-  const VERSION='LAB BRANCH v1.7.4';
+  const ARCHIVE_URL='./branch-archive-top3.json';
+  const VERSION='LAB BRANCH v1.8.0';
   const CUTOVER_ID=267756;
   let lastRenderKey='';
+  let serverArchive=[];
+  let serverUpdatedAt=null;
+  let serverLoaded=false;
+  let serverError='';
 
   const $=s=>document.querySelector(s);
   function readJson(key,fallback){try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch(_){return fallback}}
@@ -41,7 +45,28 @@
   function fmtCombo(a){return (a||[]).join(' · ')}
   function fmtBranch(d,s){return `D${d} S${s>0?'+':''}${s}`}
   function isoLocal(iso){try{return new Date(iso).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'})}catch(_){return iso}}
-  function readArchive(){const a=readJson(ARCHIVE_KEY,[]);return Array.isArray(a)?a:[]}
+  function readArchive(){return serverArchive}
+
+  async function loadServerArchive(){
+    try{
+      const sep=ARCHIVE_URL.includes('?')?'&':'?';
+      const response=await fetch(`${ARCHIVE_URL}${sep}t=${Date.now()}`,{cache:'no-store'});
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      const data=await response.json();
+      const records=Array.isArray(data)?data:Array.isArray(data?.records)?data.records:[];
+      serverArchive=records;
+      serverUpdatedAt=data?.updatedAt||null;
+      serverError='';
+      serverLoaded=true;
+      lastRenderKey='';
+      render();
+    }catch(error){
+      serverLoaded=true;
+      serverError=error?.message||String(error);
+      lastRenderKey='';
+      render();
+    }
+  }
 
   function currentTimes(target){
     try{const scheduled=CORE.normalizeTimes(scheduleTimes());if(scheduled.length>=4)return scheduled}catch(_){/* fallback below */}
@@ -62,29 +87,13 @@
     return Date.parse(`${String(yyyy).padStart(4,'0')}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}T${String(h).padStart(2,'0')}:${String(n).padStart(2,'0')}:00+03:00`);
   }
   function targetOpen(t){const ms=targetEpoch(t);return Number.isFinite(ms)&&Date.now()<ms}
-  function findFact(target){return (state.draws||[]).find(d=>(target.id&&Number(d.id)===Number(target.id))||(d.date===target.date&&d.time===target.time))||null}
 
-  function closePending(records){
-    let changed=false;
-    for(const r of records){
-      if(r.status!=='pending')continue;
-      const fact=findFact(r.target);if(!fact)continue;
-      const factCombo=CORE.combo(fact),hit=CORE.overlapCount(r.prediction,factCombo);
-      r.status='closed';r.fact={id:fact.id,date:fact.date,time:fact.time,combo:factCombo};r.hit=hit;r.result=`${hit}/2`;r.matched=CORE.matchedDigits(r.prediction,factCombo);r.closedAt=new Date().toISOString();changed=true;
-    }
-    return changed;
-  }
-  function freezeCurrent(records){
-    const target=branchTargetDraw();
-    if(!target||!(state.draws||[]).length)return {records,plan:null,frozen:null,changed:false,reason:'no-target'};
-    const key=targetKey(target),existing=records.find(x=>x.key===key);
-    if(existing)return {records,plan:null,frozen:existing,changed:false,reason:'existing'};
-    if(!targetOpen(target))return {records,plan:null,frozen:null,changed:false,reason:'target-closed'};
-    const times=currentTimes(target),plan=CORE.forecastPlan(state.draws,target,times);
-    if(!plan)return {records,plan:null,frozen:null,changed:false,reason:'no-plan'};
+  function previewFrozen(target){
+    if(!target||!(state.draws||[]).length||!targetOpen(target))return null;
+    const times=currentTimes(target),plan=CORE.forecastPlan(state.draws,target,times);if(!plan)return null;
     const p=plan.primary;
-    const frozen={
-      key,status:'pending',savedAt:new Date().toISOString(),engine:VERSION,
+    return {
+      key:targetKey(target),status:'preview',savedAt:null,previewAt:new Date().toISOString(),engine:`${VERSION} PREVIEW`,serverFrozen:false,storage:'preview-only',
       target:{id:target.id,date:target.date,time:target.time},decision:p.decision,streak:p.streak,
       branch:{d:p.chosen.d,s:p.chosen.s,score:Number(p.chosen.score.toFixed(5)),rate:Number(p.chosen.rate.toFixed(5)),samples:p.chosen.samples},
       source:{date:p.source.date,time:p.source.time,combo:[...p.source.combo]},prediction:[...p.prediction],
@@ -92,20 +101,28 @@
       extended:p.extended?{d:p.extended.d,s:p.extended.s,hit:p.extended.hit,lastSource:p.extended.lastSource,nextSource:{date:p.extended.nextSource.date,time:p.extended.nextSource.time,combo:[...p.extended.nextSource.combo]}}:null,
       ranking:p.ranking
     };
-    records.unshift(frozen);return {records,plan,frozen,changed:true,reason:'frozen'};
   }
   function sync(){
-    const records=readArchive();let changed=closePending(records);const x=freezeCurrent(records);changed=changed||x.changed;
-    if(changed){try{writeJson(ARCHIVE_KEY,records)}catch(_){return {records:readArchive(),plan:null,frozen:null,reason:'storage-error'}}}
-    return {records,plan:x.plan,frozen:x.frozen,reason:x.reason};
+    const records=readArchive();
+    if(!serverLoaded)return {records,frozen:null,reason:'server-loading'};
+    const target=branchTargetDraw();
+    if(!target)return {records,frozen:null,reason:'no-target'};
+    const existing=records.find(r=>r.key===targetKey(target));
+    if(existing)return {records,frozen:existing,reason:'server-frozen'};
+    if(serverError&&!records.length)return {records,frozen:null,reason:'server-error'};
+    if(!targetOpen(target))return {records,frozen:null,reason:'server-wait'};
+    const preview=previewFrozen(target);
+    return {records,frozen:preview,reason:preview?'server-preview':'no-plan'};
   }
 
   function resultClass(r){if(r.status==='pending')return'pending';if(r.hit===2)return'hit';if(r.hit===1)return'part';return'miss'}
   function archiveStats(records){const closed=records.filter(r=>r.status==='closed');return {total:records.length,pending:records.filter(r=>r.status==='pending').length,hit:closed.filter(r=>r.hit===2).length,part:closed.filter(r=>r.hit===1).length,miss:closed.filter(r=>r.hit===0).length}}
   function renderArchive(records){
     const el=$('#branchArchive'),stats=$('#branchArchiveStats');if(!el||!stats)return;const st=archiveStats(records);
-    stats.innerHTML=`<span>Всего <b>${st.total}</b></span><span class="ok">2/2 <b>${st.hit}</b></span><span class="part">1/2 <b>${st.part}</b></span><span class="bad">0/2 <b>${st.miss}</b></span><span>Ожидают <b>${st.pending}</b></span>`;
-    if(!records.length){el.innerHTML='<div class="branch-empty">Архив пока пуст. Первая запись появится автоматически для следующего тиража.</div>';return}
+    const updated=serverUpdatedAt?` · сервер ${isoLocal(serverUpdatedAt)}`:'';
+    stats.innerHTML=`<span>SERVER · branch-archive-top3.json${updated}</span><span>Всего <b>${st.total}</b></span><span class="ok">2/2 <b>${st.hit}</b></span><span class="part">1/2 <b>${st.part}</b></span><span class="bad">0/2 <b>${st.miss}</b></span><span>Ожидают <b>${st.pending}</b></span>`;
+    if(serverError&&!records.length){el.innerHTML=`<div class="branch-empty">Не удалось получить серверный архив: ${serverError}</div>`;return}
+    if(!records.length){el.innerHTML='<div class="branch-empty">Серверный архив пока пуст. Первая запись появится автоматически перед следующим тиражом.</div>';return}
     el.innerHTML=records.slice(0,60).map(r=>`<article class="branch-archive-row ${resultClass(r)}"><div class="bar-head"><b>${r.target.date} · ${r.target.time}</b><span>${r.status==='pending'?'ОЖИДАЕТ':r.result}</span></div><div class="bar-grid"><div><label>Постановка</label><b>${isoLocal(r.savedAt)}</b></div><div><label>Ветка</label><b>${fmtBranch(r.branch.d,r.branch.s)} · ${r.decision}</b></div><div><label>Источник</label><b>${r.source.date} ${r.source.time} · ${fmtCombo(r.source.combo)}</b></div><div><label>Frozen</label><b>${fmtCombo(r.prediction)}</b></div><div><label>Факт</label><b>${r.fact?fmtCombo(r.fact.combo):'—'}</b></div><div><label>Совпало</label><b>${r.matched?.length?fmtCombo(r.matched):'—'}</b></div></div></article>`).join('');
   }
 
@@ -153,23 +170,32 @@
   function renderForecast(frozen,reason){
     const root=$('#branchForecast');if(!root)return;
     if(!frozen){
-      const msg=reason==='storage-error'?'Не удалось сохранить архив. Разрешите хранение данных в браузере и обновите страницу.':reason==='target-closed'?'Новый frozen не создан: время следующего тиража уже наступило, ждём факт.':'Недостаточно данных для постановки.';
+      const msg=reason==='server-loading'?'Загружаю branch-archive-top3.json…':reason==='server-error'?`Серверный архив временно недоступен: ${serverError}`:reason==='server-wait'?'Время следующего тиража уже наступило. Ждём новый факт и серверную фиксацию следующего прогноза.':'Недостаточно данных для постановки.';
       root.innerHTML=`<div class="branch-card"><button id="branchToggle" type="button" class="branch-summary" aria-controls="branchDetail"><span><b>🧭 Ветка на следующий тираж</b><small>Открыть состояние прогноза</small></span><span class="branch-chevron"></span></button><div id="branchDetail" class="branch-detail"><div class="branch-empty">${msg}</div></div></div>`;applyUi();return;
     }
-    const s0=frozen.s0;
-    root.innerHTML=`<div class="branch-card"><button id="branchToggle" class="branch-summary" type="button" aria-controls="branchDetail"><span><b>🧭 Ветка на следующий тираж</b><small><span id="branchToggleHint"></span> · цель ${frozen.target.date} · ${frozen.target.time}</small></span><span class="branch-summary-center"><strong>${fmtBranch(frozen.branch.d,frozen.branch.s)}</strong><em>${frozen.decision} · streak ${frozen.streak}</em></span><span class="branch-picks">${frozen.prediction.map(n=>`<i>${n}</i>`).join('')}</span><span class="branch-chevron">${ui.collapsed?'⌄':'⌃'}</span></button><div id="branchDetail" class="branch-detail"><div class="branch-meta-grid"><div><label>Целевой тираж</label><b>№${frozen.target.id||'—'} · ${frozen.target.date} ${frozen.target.time}</b></div><div><label>Время постановки</label><b>${isoLocal(frozen.savedAt)}</b></div><div><label>Решение</label><b>${frozen.decision} · streak ${frozen.streak}</b></div><div><label>Источник</label><b>${frozen.source.date} ${frozen.source.time} · ${fmtCombo(frozen.source.combo)}</b></div><div><label>Прогноз 2 цифры</label><b class="branch-two">${fmtCombo(frozen.prediction)}</b></div><div><label>Архивный score</label><b>${Math.round((frozen.branch.rate||0)*100)}% · n=${frozen.branch.samples}</b></div></div>${s0?`<section class="branch-control-card"><h3>Контроль того же D с S0</h3><div class="bcc-source"><label>Источник</label><b>${s0.source.date} ${s0.source.time} · ${fmtCombo(s0.source.combo)}</b></div><div class="bcc-param"><label>Параметр</label><b><span>D${frozen.branch.d}</span><span>S0</span></b></div><div class="bcc-pick"><label>Контрольные цифры</label>${pairHtml(s0.prediction,'control')}</div></section>`:''}<div class="branch-actions"><button id="branchArrowToggle" aria-controls="branchArrows" type="button" class="secondary-btn">${ui.arrows?'Скрыть стрелки':'Показать стрелки'}</button><span>Frozen не переписывается после факта.</span></div><div id="branchArrows">${branchMatrixHtml(frozen)}</div></div></div>`;
+    const s0=frozen.s0,serverFrozen=frozen.serverFrozen===true&&frozen.status!=='preview';
+    const storageText=serverFrozen?'SERVER FROZEN · branch-archive-top3.json':'ПРЕДПРОСМОТР · ждём SERVER FROZEN';
+    const placedText=serverFrozen&&frozen.savedAt?isoLocal(frozen.savedAt):'ещё не записан на сервер';
+    root.innerHTML=`<div class="branch-card"><button id="branchToggle" class="branch-summary" type="button" aria-controls="branchDetail"><span><b>🧭 Ветка на следующий тираж</b><small><span id="branchToggleHint"></span> · цель ${frozen.target.date} · ${frozen.target.time}</small></span><span class="branch-summary-center"><strong>${fmtBranch(frozen.branch.d,frozen.branch.s)}</strong><em>${frozen.decision} · streak ${frozen.streak}</em></span><span class="branch-picks">${frozen.prediction.map(n=>`<i>${n}</i>`).join('')}</span><span class="branch-chevron">${ui.collapsed?'⌄':'⌃'}</span></button><div id="branchDetail" class="branch-detail"><div class="branch-meta-grid"><div><label>Целевой тираж</label><b>№${frozen.target.id||'—'} · ${frozen.target.date} ${frozen.target.time}</b></div><div><label>Время постановки</label><b>${placedText}</b></div><div><label>Решение</label><b>${frozen.decision} · streak ${frozen.streak}</b></div><div><label>Источник</label><b>${frozen.source.date} ${frozen.source.time} · ${fmtCombo(frozen.source.combo)}</b></div><div><label>Прогноз 2 цифры</label><b class="branch-two">${fmtCombo(frozen.prediction)}</b></div><div><label>Архивный score</label><b>${Math.round((frozen.branch.rate||0)*100)}% · n=${frozen.branch.samples}</b></div></div>${s0?`<section class="branch-control-card"><h3>Контроль того же D с S0</h3><div class="bcc-source"><label>Источник</label><b>${s0.source.date} ${s0.source.time} · ${fmtCombo(s0.source.combo)}</b></div><div class="bcc-param"><label>Параметр</label><b><span>D${frozen.branch.d}</span><span>S0</span></b></div><div class="bcc-pick"><label>Контрольные цифры</label>${pairHtml(s0.prediction,'control')}</div></section>`:''}<div class="branch-actions"><button id="branchArrowToggle" aria-controls="branchArrows" type="button" class="secondary-btn">${ui.arrows?'Скрыть стрелки':'Показать стрелки'}</button><span>${storageText}</span></div><div id="branchArrows">${branchMatrixHtml(frozen)}</div></div></div>`;
     applyUi();
   }
 
   function render(){
     if(typeof state==='undefined'||!Array.isArray(state.draws))return;
     const {records,frozen,reason}=sync();
-    const rk=`${state.draws[0]?.id||0}|${records.length}|${frozen?.key||''}|${reason||''}|${records.map(r=>r.status+':'+r.result).join(',')}`;
+    const rk=`${state.draws[0]?.id||0}|${serverUpdatedAt||''}|${serverError}|${records.length}|${frozen?.key||''}|${reason||''}|${records.map(r=>r.status+':'+r.result).join(',')}`;
     if(rk===lastRenderKey&&$('#branchForecast')?.children.length){applyUi();return}
     lastRenderKey=rk;renderForecast(frozen,reason);renderArchive(records);
     const test=CORE.selfTest(),badge=$('#branchSelfTest');if(badge){badge.textContent=test.pass?'SELF-TEST PASS':'SELF-TEST FAIL';badge.className=`branch-selftest ${test.pass?'pass':'fail'}`}
   }
-  function boot(){const root=$('#labView');if(root)root.addEventListener('click',handleClick);applyUi();render();setInterval(render,2500);const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>setTimeout(render,1200));window.addEventListener('resize',()=>{if(ui.arrows)centerBranchMatrix()})}
+  function boot(){
+    const root=$('#labView');if(root)root.addEventListener('click',handleClick);
+    applyUi();render();loadServerArchive();
+    setInterval(render,2500);
+    setInterval(loadServerArchive,15000);
+    const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>{setTimeout(render,600);setTimeout(loadServerArchive,900)});
+    window.addEventListener('resize',()=>{if(ui.arrows)centerBranchMatrix()});
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
-  window.LabBranch={render,readArchive,selfTest:CORE.selfTest,targetOpen,branchTargetDraw};
+  window.LabBranch={render,readArchive,loadServerArchive,selfTest:CORE.selfTest,targetOpen,branchTargetDraw,archiveSource:ARCHIVE_URL};
 })();
