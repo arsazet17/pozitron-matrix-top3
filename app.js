@@ -1,9 +1,10 @@
 'use strict';
 const LIVE_URL='./top3-live.json';
 const OFFICIAL_TIMES=['02:40','04:40','06:40','07:40','09:40','11:40','13:40','16:25','21:25','22:40'];
-const state={draws:[],regularTimes:[...OFFICIAL_TIMES],days:14,rowLimit:50,mode:'ALL',activeDigits:new Set(),tab:'matrix',updatedAt:null,source:'встроенный архив'};
+const state={draws:[],regularTimes:[...OFFICIAL_TIMES],days:14,rowLimit:50,mode:'ALL',columnOrder:null,activeDigits:new Set(),tab:'matrix',updatedAt:null,source:'встроенный архив'};
 const $=s=>document.querySelector(s); const $$=s=>[...document.querySelectorAll(s)];
 const WEEK=['Вс','Пн','Вт','Ср','Чт','Пт','Сб'];
+const MATRIX_ORDERS=['ABC','ACB','BAC','BCA','CAB','CBA'];
 
 function parseDate(s){const [d,m,y]=String(s).split('.').map(Number);return new Date(Date.UTC(y<100?2000+y:y,m-1,d));}
 function formatDate(dt){return [String(dt.getUTCDate()).padStart(2,'0'),String(dt.getUTCMonth()+1).padStart(2,'0'),String(dt.getUTCFullYear()).slice(-2)].join('.');}
@@ -13,6 +14,7 @@ function normalizeRow(r){if(Array.isArray(r))return {id:+r[0],date:String(r[1]),
 function valid(d){return Number.isFinite(d.id)&&/^\d{2}\.\d{2}\.\d{2}$/.test(d.date)&&/^\d{2}:\d{2}$/.test(d.time)&&[d.a,d.b,d.c].every(x=>Number.isInteger(x)&&x>=0&&x<=9)}
 function unique(list){const m=new Map();for(const x of list){const d=normalizeRow(x);if(valid(d)&&!m.has(d.id))m.set(d.id,d)}return [...m.values()].sort((a,b)=>b.id-a.id)}
 function combo(d){return[d.a,d.b,d.c]}
+function matrixOrder(){return MATRIX_ORDERS.includes(state.columnOrder)?state.columnOrder:'ABC'}
 
 async function load(){
   const seed=Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[];let live=[];
@@ -36,24 +38,30 @@ function scheduleTimes(){return [...state.regularTimes].sort()}
 function freqMap(groups,times){const f={};for(const time of times){f[time]={A:Array(10).fill(0),B:Array(10).fill(0),C:Array(10).fill(0),ALL:Array(10).fill(0)};}for(const [,ds]of groups){for(const d of ds){const vals=[d.a,d.b,d.c];['A','B','C'].forEach((p,i)=>{f[d.time][p][vals[i]]++;f[d.time].ALL[vals[i]]++;});}}return f}
 function level(n,max){if(!max)return 0;const r=n/max;if(n===0)return 0;if(r<.35)return 1;if(r<.55)return 2;if(r<.75)return 3;if(r<.92)return 4;return 5}
 
-function renderMatrix(){const groups=daysGrouped(),times=timeList(groups),freq=freqMap(groups,times);const cols=`126px repeat(${times.length},206px)`;let html=`<div class="matrix-grid" style="grid-template-columns:${cols}">`;
-  html+=`<div class="mcell mhead date-head date-cell"><b>Дата</b><span>день</span></div>`;for(const t of times)html+=`<div class="mcell mhead time-head"><div class="time-title">${t}</div><div class="abc-head"><span>A</span><span>B</span><span>C</span></div></div>`;
-  for(const [date,ds] of groups){html+=`<div class="mcell date-cell"><b>${date}</b><span>${weekday(date)}</span></div>`;const byTime=new Map(ds.map(d=>[d.time,d]));for(const t of times){const d=byTime.get(t);if(!d){html+=`<div class="mcell draw-cell"><div class="draw-id">—</div><div class="digits"><button class="matrix-digit freq-0" disabled>·</button><button class="matrix-digit freq-0" disabled>·</button><button class="matrix-digit freq-0" disabled>·</button></div></div>`;continue;}const vals=[d.a,d.b,d.c],ps=['A','B','C'];const max=Math.max(...freq[t][state.mode]);html+=`<div class="mcell draw-cell"><div class="draw-id">№${d.id}</div><div class="digits">`+vals.map((v,i)=>{const key=state.mode==='ALL'?'ALL':state.mode;const count=freq[t][key][v];const lv=level(count,max);const dim=state.mode!=='ALL'&&state.mode!==ps[i]?' dim':'';const sel=state.activeDigits.has(v)?' selected':'';return `<button class="matrix-digit freq-${lv}${dim}${sel}" data-digit="${v}" title="${ps[i]} · ${count} раз">${v}</button>`}).join('')+`</div></div>`;}}
+function renderColumnOrderButtons(){
+  const root=$('#columnOrderButtons');if(!root)return;
+  root.querySelectorAll('[data-order]').forEach(b=>b.classList.toggle('active',state.columnOrder===b.dataset.order));
+  const hint=$('#columnOrderHint');if(hint)hint.textContent=state.columnOrder?`Сейчас: ${state.columnOrder}`:'Нет выбора → ABC';
+}
+function renderMatrix(){const groups=daysGrouped(),times=timeList(groups),freq=freqMap(groups,times),order=matrixOrder().split('');const cols=`126px repeat(${times.length},206px)`;let html=`<div class="matrix-grid" style="grid-template-columns:${cols}">`;
+  html+=`<div class="mcell mhead date-head date-cell"><b>Дата</b><span>день</span></div>`;for(const t of times)html+=`<div class="mcell mhead time-head"><div class="time-title">${t}</div><div class="abc-head">${order.map(p=>`<span>${p}</span>`).join('')}</div></div>`;
+  for(const [date,ds] of groups){html+=`<div class="mcell date-cell"><b>${date}</b><span>${weekday(date)}</span></div>`;const byTime=new Map(ds.map(d=>[d.time,d]));for(const t of times){const d=byTime.get(t);if(!d){html+=`<div class="mcell draw-cell"><div class="draw-id">—</div><div class="digits"><button class="matrix-digit freq-0" disabled>·</button><button class="matrix-digit freq-0" disabled>·</button><button class="matrix-digit freq-0" disabled>·</button></div></div>`;continue;}const valueByPosition={A:d.a,B:d.b,C:d.c},ps=order,vals=ps.map(p=>valueByPosition[p]);const max=Math.max(...freq[t][state.mode]);html+=`<div class="mcell draw-cell"><div class="draw-id">№${d.id}</div><div class="digits">`+vals.map((v,i)=>{const key=state.mode==='ALL'?'ALL':state.mode;const count=freq[t][key][v];const lv=level(count,max);const dim=state.mode!=='ALL'&&state.mode!==ps[i]?' dim':'';const sel=state.activeDigits.has(v)?' selected':'';return `<button class="matrix-digit freq-${lv}${dim}${sel}" data-digit="${v}" title="${ps[i]} · ${count} раз">${v}</button>`}).join('')+`</div></div>`;}}
   html+='</div>';$('#matrixTable').innerHTML=html;bindDigitClicks($('#matrixTable'));renderMatrixStatus(groups,times);renderBars(filteredByDays());
 }
-function renderMatrixStatus(groups,times){const latest=state.draws[0];$('#matrixStatus').innerHTML=`Режим: <b>${state.mode==='ALL'?'ВСЕ':state.mode}</b><br>Дней: <b>${groups.length}</b><br>Времён: <b>${times.length}</b><br>Последний: <b>${latest?`№${latest.id}`:'—'}</b><br>Источник: <b>${state.source}</b>`}
+function renderMatrixStatus(groups,times){const latest=state.draws[0];$('#matrixStatus').innerHTML=`Режим: <b>${state.mode==='ALL'?'ВСЕ':state.mode}</b><br>Порядок: <b>${matrixOrder()}</b><br>Дней: <b>${groups.length}</b><br>Времён: <b>${times.length}</b><br>Последний: <b>${latest?`№${latest.id}`:'—'}</b><br>Источник: <b>${state.source}</b>`}
 function renderBars(list){const c=Array(10).fill(0);list.forEach(d=>{c[d.a]++;c[d.b]++;c[d.c]++});const max=Math.max(...c,1);$('#frequencyBars').innerHTML=c.map((v,i)=>`<div class="bar-wrap"><span class="bar-value">${v}</span><div class="bar" style="height:${Math.max(4,v/max*120)}px"></div><span class="bar-label">${i}</span></div>`).join('')}
 function renderActiveDigits(){for(const id of ['topDigitButtons','activeDigitButtons']){const el=$('#'+id);el.innerHTML=Array.from({length:10},(_,i)=>`<button class="digit-btn ${state.activeDigits.has(i)?'active':''}" data-digit="${i}">${i}</button>`).join('');bindDigitClicks(el)}$('#selectedCount').textContent=`Выбрано: ${state.activeDigits.size} / 10`}
 function bindDigitClicks(root){root.querySelectorAll('[data-digit]').forEach(b=>b.onclick=()=>{const n=+b.dataset.digit;state.activeDigits.has(n)?state.activeDigits.delete(n):state.activeDigits.add(n);renderAll()})}
 function renderHorizontal(){const list=filteredByDays().slice(0,state.rowLimit);$('#horizontalBody').innerHTML=list.map(d=>`<tr><td>№${d.id}</td><td>${d.date} <span class="weekday">${weekday(d.date)}</span></td><td>${d.time}</td><td><div class="combo-buttons">${combo(d).map(v=>`<button class="h-digit ${state.activeDigits.has(v)?'selected':''}" data-digit="${v}">${v}</button>`).join('')}</div></td></tr>`).join('');bindDigitClicks($('#horizontalBody'))}
 
 function switchTab(tab){scheduleScroll.capture($('#matrixTable'));scheduleScroll.capture($('#horizontalMatrix'));state.tab=tab;$$('.tab,.foot').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$$('.view').forEach(v=>v.classList.remove('active'));$('#'+tab+'View').classList.add('active');scheduleScroll.restore($('#matrixTable'));scheduleScroll.restore($('#horizontalMatrix'));renderAll()}
-function renderAll(){renderActiveDigits();renderMatrix();renderHorizontal()}
+function renderAll(){renderActiveDigits();renderColumnOrderButtons();renderMatrix();renderHorizontal()}
 function bind(){
   $$('.tab,.foot').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
   $('#dayButtons').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.days=+b.dataset.days;$('#dayButtons').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));renderAll()});
   $('#rowLimit').onchange=e=>{state.rowLimit=+e.target.value;renderAll()};
   $('#positionMode').querySelectorAll('button').forEach(b=>b.onclick=()=>{state.mode=b.dataset.mode;$('#positionMode').querySelectorAll('button').forEach(x=>x.classList.toggle('active',x===b));renderAll()});
+  $('#columnOrderButtons').querySelectorAll('[data-order]').forEach(b=>b.onclick=()=>{const next=b.dataset.order;state.columnOrder=state.columnOrder===next?null:next;renderAll()});
   $('#resetBtn').onclick=()=>{state.activeDigits.clear();renderAll()};
   $('#refreshBtn').onclick=()=>location.reload();
 }

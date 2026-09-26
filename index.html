@@ -8,6 +8,7 @@
   <title>Матрица ТОП-3</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css?v=1.4.1" />
+  <link rel="stylesheet" href="matrix-order.css?v=1.8.3" />
   <link rel="stylesheet" href="lab-branch.css?v=1.8.0" />
   <link rel="stylesheet" href="lab-three-columns.css?v=1.0.0" />
 </head>
@@ -18,9 +19,11 @@
     <div class="splash-sub">MATRIX TOP-3</div>
   </div>
   <main id="app" class="app hidden">
-    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.8.2 · LAB THREE COLUMNS</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
+    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.8.3 · COLUMN ORDER + LAB THREE COLUMNS</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
     <nav class="tabs" aria-label="Разделы"><button class="tab active" data-tab="matrix">Матрица ТОП-3</button><button class="tab" data-tab="horizontal">Горизонталь ТОП-3</button><button class="tab" data-tab="lab">🧪 LAB MATRIX</button></nav>
-    <section class="controls card"><div class="control-group"><label>Показать дней</label><div id="dayButtons" class="segmented small"><button data-days="7">7</button><button class="active" data-days="14">14</button><button data-days="30">30</button><button data-days="60">60</button></div></div><div class="control-group"><label>Строк на экране</label><select id="rowLimit"><option>20</option><option selected>50</option><option>100</option><option>200</option></select></div><div class="control-group grow"><label>Активные цифры</label><div id="topDigitButtons" class="digit-strip"></div></div><button id="resetBtn" class="reset-btn">Сброс</button></section>
+    <section class="controls card">
+      <div class="control-group matrix-order-control"><label>Порядок столбов</label><div id="columnOrderButtons" class="column-order-grid" aria-label="Порядок столбов Матрицы ТОП-3"><button type="button" class="column-order-btn" data-order="ABC">ABC</button><button type="button" class="column-order-btn" data-order="ACB">ACB</button><button type="button" class="column-order-btn" data-order="BAC">BAC</button><button type="button" class="column-order-btn" data-order="BCA">BCA</button><button type="button" class="column-order-btn" data-order="CAB">CAB</button><button type="button" class="column-order-btn" data-order="CBA">CBA</button></div><div id="columnOrderHint" class="column-order-hint">Нет выбора → ABC</div></div>
+      <div class="control-group"><label>Показать дней</label><div id="dayButtons" class="segmented small"><button data-days="7">7</button><button class="active" data-days="14">14</button><button data-days="30">30</button><button data-days="60">60</button></div></div><div class="control-group"><label>Строк на экране</label><select id="rowLimit"><option>20</option><option selected>50</option><option>100</option><option>200</option></select></div><div class="control-group grow"><label>Активные цифры</label><div id="topDigitButtons" class="digit-strip"></div></div><button id="resetBtn" class="reset-btn">Сброс</button></section>
     <section id="matrixView" class="view active"><section class="card matrix-card"><div class="section-title-row"><div><h2>МАТРИЦА ТОП-3</h2><p>дата / день → время → № тиража → A B C</p></div><div id="positionMode" class="segmented mode"><button data-mode="A">A</button><button data-mode="B">B</button><button data-mode="C">C</button><button class="active" data-mode="ALL">ВСЕ</button></div></div><div class="legend"><span><i class="l low"></i>низкая</span><span><i class="l mid"></i>средняя</span><span><i class="l high"></i>высокая</span><span><i class="l hot"></i>очень высокая</span></div><div id="matrixScroll" class="matrix-scroll"><div id="matrixTable"></div></div></section><section class="bottom-grid"><div class="card active-card"><h3>Активные цифры</h3><div id="activeDigitButtons" class="active-digit-grid"></div><div id="selectedCount" class="muted">Выбрано: 0 / 10</div></div><div class="card stats-card"><h3>Частота выпадений</h3><div id="frequencyBars" class="bars"></div></div><div class="card status-card"><h3>Статус матрицы</h3><div id="matrixStatus"></div></div></section></section>
     <section id="horizontalView" class="view"><section class="card hm-card"><div class="hm-head"><div><h2>ГОРИЗОНТАЛЬ ТОП-3</h2><p>таблица переходов по времени · 1 / 2 / 3 столб и общая</p></div><div><div id="hmPageTitle" class="hm-page-title">1 СТОЛБ · A</div><div class="hm-swipe-hint">вкладки можно листать пальцем</div></div></div><div id="hmPager" class="hm-pager" aria-label="Столбы TOP-3"></div><div class="hm-legend"><span><i class="hm-dot hm-blue"></i>синий — повтор на вторые сутки</span><span><i class="hm-dot hm-green"></i>зелёный — вертикаль вправо</span><span><i class="hm-dot hm-orange"></i>оранжевый — вертикаль влево</span><span><i class="hm-dot hm-lightblue"></i>светло-голубой — повтор на третьи сутки</span></div><div id="horizontalMatrix"></div><table class="hm-legacy"><tbody id="horizontalBody"></tbody></table></section></section>
 
@@ -59,8 +62,8 @@
   </main>
   <script src="top3-data.js?v=1"></script>
   <script src="schedule-scroll.js?v=1.4.3"></script>
-  <script src="app.js?v=1.8.2"></script>
-  <script src="schedule-era.js?v=1.4.3"></script>
+  <script src="app.js?v=1.8.3"></script>
+  <script src="schedule-era.js?v=1.8.3"></script>
   <script src="horizontal-matrix.js?v=1.4.3"></script>
   <script src="lab-branch-core.js?v=1.8.0"></script>
   <script src="lab-branch.js?v=1.8.0"></script>
