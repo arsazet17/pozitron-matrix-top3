@@ -4,10 +4,11 @@ on:
   push:
     branches:
       - main
-      - lab-branch-server-archive-v1.8.0
+      - remove-lab-legacy-v1.8.1
   pull_request:
     paths:
       - 'index.html'
+      - 'app.js'
       - 'lab-branch-core.js'
       - 'lab-branch.js'
       - 'lab-branch.css'
@@ -29,6 +30,7 @@ jobs:
           node-version: '20'
       - name: Syntax check
         run: |
+          node --check app.js
           node --check lab-branch-core.js
           node --check lab-branch.js
           node --check scripts/branch-archive-top3-server.cjs
