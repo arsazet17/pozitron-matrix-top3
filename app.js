@@ -165,7 +165,7 @@ function renderStats(){
   const tiles=[['Сохранено',all.length,''],['Рекомендаций',recs.length,''],['Пропусков',skips.length,''],['Выигрышей',wins.length,'good'],['Попадание',`${rate.toFixed(1)}%`,rate>=50?'good':''],['Сумма ставок',rub(stake),''],['Выигрыши',rub(prize),'good'],['Чистый итог',`${net>=0?'+ ':''}${rub(net)}`,net>=0?'good':'bad']];
   $('#labStats').innerHTML=tiles.map(([l,v,c])=>`<div class="stat-tile ${c}"><span>${l}</span><b>${v}</b></div>`).join('');
 }
-function switchTab(tab){state.tab=tab;$$('.tab,.foot').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$$('.view').forEach(v=>v.classList.remove('active'));$('#'+tab+'View').classList.add('active');renderAll()}
+function switchTab(tab){scheduleScroll.capture($('#matrixTable'));scheduleScroll.capture($('#horizontalMatrix'));state.tab=tab;$$('.tab,.foot').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$$('.view').forEach(v=>v.classList.remove('active'));$('#'+tab+'View').classList.add('active');scheduleScroll.restore($('#matrixTable'));scheduleScroll.restore($('#horizontalMatrix'));renderAll()}
 function renderAll(){renderActiveDigits();renderMatrix();renderHorizontal();renderLab()}
 function toast(message){const old=$('.toast');if(old)old.remove();const el=document.createElement('div');el.className='toast';el.textContent=message;document.body.appendChild(el);setTimeout(()=>el.remove(),3200)}
 function bind(){

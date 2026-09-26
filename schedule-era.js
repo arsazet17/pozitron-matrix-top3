@@ -1,7 +1,7 @@
 'use strict';
 
 /*
-  MATRIX TOP-3 · SCHEDULE ERA v1.4.1
+  MATRIX TOP-3 · SCHEDULE ERA v1.4.3
   Fixed new schedule: 48 draws/day, every 30 minutes at :25 / :55.
   Old archive remains unchanged through №267755.
 */
@@ -65,7 +65,7 @@
       ? `<div class="schedule-era-head"><span class="era-badge">НОВОЕ РАСПИСАНИЕ</span><span class="era-range">№267756 и далее</span><span class="era-sub">48 тиражей · :25 / :55 · свежая дата сверху</span></div>`
       : `<div class="schedule-era-head"><span class="era-badge">СТАРОЕ РАСПИСАНИЕ</span><span class="era-range">по №267755 включительно</span><span class="era-sub">архив сохранён без изменения времени</span></div>`;
 
-    html+=`<div class="schedule-era-scroll"><div class="matrix-grid" style="grid-template-columns:${cols}">`;
+    html+=`<div class="schedule-era-scroll" data-schedule-era="${era}"><div class="matrix-grid" style="grid-template-columns:${cols}">`;
     html+=`<div class="mcell mhead date-head date-cell"><b>Дата</b><span>день</span></div>`;
     for(const t of times){
       html+=`<div class="mcell mhead time-head"><div class="time-title">${t}</div><div class="abc-head"><span>A</span><span>B</span><span>C</span></div></div>`;
@@ -99,12 +99,15 @@
 
   renderMatrix = function(){
     injectStyles();
+    const root=$('#matrixTable');
+    scheduleScroll.capture(root);
     const newHtml=nativeGrid('new');
     const oldHtml=nativeGrid('old');
     const divider=(newHtml&&oldHtml)
       ? `<div class="schedule-divider"><span>СМЕНА РАСПИСАНИЯ · 08.09.2026 · между №267755 / №267756</span></div>`
       : '';
-    $('#matrixTable').innerHTML=newHtml+divider+oldHtml;
+    root.innerHTML=newHtml+divider+oldHtml;
+    scheduleScroll.restore(root);
     bindDigitClicks($('#matrixTable'));
     renderBars(filteredByDays());
 
