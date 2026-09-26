@@ -1,9 +1,10 @@
 'use strict';
 
 /*
-  MATRIX TOP-3 · SCHEDULE ERA v1.4.3
+  MATRIX TOP-3 · SCHEDULE ERA v1.8.3
   Fixed new schedule: 48 draws/day, every 30 minutes at :25 / :55.
   Old archive remains unchanged through №267755.
+  Visual A/B/C order follows the matrix order keypad.
 */
 (() => {
   const CUTOVER_ID = 267756;
@@ -12,6 +13,7 @@
 
   function eraOf(d){ return d.id >= CUTOVER_ID ? 'new' : 'old'; }
   function eraRows(era){ return filteredByDays().filter(d => eraOf(d) === era); }
+  function selectedOrder(){ return (typeof matrixOrder==='function' ? matrixOrder() : 'ABC').split(''); }
 
   // LAB and targetDraw must always use the complete current schedule.
   scheduleTimes = function(){ return NEW_TIMES.slice(); };
@@ -58,6 +60,7 @@
     const groups=groupRows(rows);
     const times=era==='new' ? NEW_TIMES.slice() : OLD_TIMES.slice();
     const freq=freqMap(groups,times);
+    const order=selectedOrder();
     const cols=`126px repeat(${times.length},206px)`;
 
     let html=`<section class="schedule-era-block ${era==='new'?'new-era':'old-era'}">`;
@@ -68,7 +71,7 @@
     html+=`<div class="schedule-era-scroll" data-schedule-era="${era}"><div class="matrix-grid" style="grid-template-columns:${cols}">`;
     html+=`<div class="mcell mhead date-head date-cell"><b>Дата</b><span>день</span></div>`;
     for(const t of times){
-      html+=`<div class="mcell mhead time-head"><div class="time-title">${t}</div><div class="abc-head"><span>A</span><span>B</span><span>C</span></div></div>`;
+      html+=`<div class="mcell mhead time-head"><div class="time-title">${t}</div><div class="abc-head">${order.map(p=>`<span>${p}</span>`).join('')}</div></div>`;
     }
 
     for(const [date,ds] of groups){
@@ -80,7 +83,9 @@
           html+=`<div class="mcell draw-cell"><div class="draw-id">—</div><div class="digits"><button class="matrix-digit freq-0" disabled>·</button><button class="matrix-digit freq-0" disabled>·</button><button class="matrix-digit freq-0" disabled>·</button></div></div>`;
           continue;
         }
-        const vals=[d.a,d.b,d.c], ps=['A','B','C'];
+        const valueByPosition={A:d.a,B:d.b,C:d.c};
+        const ps=order;
+        const vals=ps.map(p=>valueByPosition[p]);
         const key=state.mode==='ALL'?'ALL':state.mode;
         const max=Math.max(...freq[t][key]);
         html+=`<div class="mcell draw-cell"><div class="draw-id">№${d.id}</div><div class="digits">`;
@@ -114,6 +119,7 @@
     const latest=state.draws[0];
     $('#matrixStatus').innerHTML=
       `Режим: <b>${state.mode==='ALL'?'ВСЕ':state.mode}</b><br>`+
+      `Порядок: <b>${typeof matrixOrder==='function'?matrixOrder():'ABC'}</b><br>`+
       `Новая сетка: <b>48 времён · :25 / :55</b><br>`+
       `Граница: <b>№267756</b><br>`+
       `Последний: <b>${latest?`№${latest.id}`:'—'}</b><br>`+
