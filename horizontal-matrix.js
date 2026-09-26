@@ -1,7 +1,7 @@
 'use strict';
 
 /*
-  MATRIX TOP-3 · HORIZONTAL v1.4.1
+  MATRIX TOP-3 · HORIZONTAL v1.4.2
   Fixed 48-column new schedule. Old era is unchanged.
 */
 (() => {
@@ -83,7 +83,7 @@
     const draws=rows(era);if(!draws.length)return'';
     const times=era==='new'?NEW_TIMES.slice():OLD_TIMES.slice(), map=drawMap(draws), gs=groups(draws);
     let h=`<section class="hm-era ${era}"><div class="hm-era-head"><span class="hm-era-badge">${era==='new'?'НОВОЕ РАСПИСАНИЕ':'СТАРОЕ РАСПИСАНИЕ'}</span><b>${era==='new'?'№267756 и далее':'по №267755 включительно'}</b><span class="hm-era-sub">${era==='new'?'48 тиражей · :25 / :55 · свежая дата сверху':'архив без смешивания с новой сеткой'}</span></div>`;
-    h+=`<div class="hm-table-wrap"><table class="hm-table ${era==='old'?'old-grid':''}"><thead><tr><th class="hm-date-head">Дата / день</th>${times.map(t=>`<th class="hm-time">${t}</th>`).join('')}</tr></thead><tbody>`;
+    h+=`<div class="hm-table-wrap" data-hm-era="${era}"><table class="hm-table ${era==='old'?'old-grid':''}"><thead><tr><th class="hm-date-head">Дата / день</th>${times.map(t=>`<th class="hm-time">${t}</th>`).join('')}</tr></thead><tbody>`;
     for(const [date] of gs){
       h+=`<tr><td class="hm-date">${date} <span class="weekday">${weekday(date)}</span></td>`;
       for(const t of times)h+=page==='ALL'?all(map,date,t,times):single(map,date,t,page,times);
@@ -94,8 +94,16 @@
 
   function render(){
     const root=document.getElementById('horizontalMatrix');if(!root)return;
+    // Share the viewed time and row across columns, separately for each schedule.
+    const scrollPositions=new Map([...root.querySelectorAll('.hm-table-wrap')].map(el=>[
+      el.dataset.hmEra,{left:el.scrollLeft,top:el.scrollTop}
+    ]));
     const n=eraHtml('new'),o=eraHtml('old');
     root.innerHTML=n+(n&&o?`<div class="hm-era-divider"><span>СМЕНА РАСПИСАНИЯ · 08.09.2026</span></div>`:'')+o;
+    root.querySelectorAll('.hm-table-wrap').forEach(el=>{
+      const saved=scrollPositions.get(el.dataset.hmEra);if(!saved)return;
+      el.scrollLeft=saved.left;el.scrollTop=saved.top;
+    });
     root.querySelectorAll('[data-digit]').forEach(el=>el.onclick=()=>{const x=+el.dataset.digit;state.activeDigits.has(x)?state.activeDigits.delete(x):state.activeDigits.add(x);renderAll()});
     const title=document.getElementById('hmPageTitle');if(title)title.textContent=page==='ALL'?'ОБЩАЯ · A+B+C':`${LABELS[page]} · ${page}`;
     document.querySelectorAll('[data-hm-page]').forEach(b=>b.classList.toggle('active',b.dataset.hmPage===page));
