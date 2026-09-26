@@ -38,9 +38,13 @@ const js=fs.readFileSync('lab-branch.js','utf8');
 const css=fs.readFileSync('lab-branch.css','utf8');
 const sw=fs.readFileSync('sw.js','utf8');
 for(const needle of ['id="branchForecast"','id="branchArchive"','Ступени','Три столба','lab-branch-core.js','lab-branch.js'])assert.ok(html.includes(needle),`index missing ${needle}`);
-for(const needle of ['pozitron.lab.branch.archive.v1','status:\'pending\'','closePending','Frozen не переписывается','branchArrowToggle'])assert.ok(js.includes(needle),`branch js missing ${needle}`);
+for(const needle of ['pozitron.lab.branch.archive.v1','status:\'pending\'','closePending','Frozen не переписывается','branchArrowToggle','branchTargetDraw','targetOpen','+03:00'])assert.ok(js.includes(needle),`branch js missing ${needle}`);
+assert.ok(js.startsWith("'use strict';"),'lab-branch.js must use strict mode');
+assert.ok(!js.includes('!window.state'),'lab-branch.js must not require window.state: app.js exposes lexical state');
+assert.ok(js.includes("Number(d.id)>=CUTOVER_ID"),'branch target must use the new 48-draw era');
+assert.ok(js.includes('Date.now()<ms'),'late target guard must block post-draw frozen creation');
 assert.ok(css.includes('.lab-legacy-runtime{display:none!important}'));
 for(const asset of ['./lab-branch.css','./lab-branch-core.js','./lab-branch.js'])assert.ok(sw.includes(asset),`sw missing ${asset}`);
 
 console.log('LAB MATRIX BRANCH CONTROL: PASS');
-console.log(`Core ${Core.VERSION}; D/date and S/time matrix checked; module/archive/cache integration present.`);
+console.log(`Core ${Core.VERSION}; D/date, S/time, runtime-state guard, 48-draw target and honest-freeze gate checked.`);
