@@ -1,4 +1,4 @@
-const CACHE='matrix-top3-v1.7.1-lab-branch';
+const CACHE='matrix-top3-v1.7.1-lab-branch-hotfix1';
 const ASSETS=['./','./index.html','./styles.css','./lab-branch.css','./app.js','./lab-detector.js','./lab-branch-core.js','./lab-branch.js','./top3-data.js','./top3-live.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 const NETWORK_FIRST=['/','/index.html','/app.js','/lab-detector.js','/lab-branch-core.js','/lab-branch.js','/styles.css','/lab-branch.css','/top3-live.json'];
 
