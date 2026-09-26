@@ -13,6 +13,8 @@ on:
       - 'lab-branch.css'
       - 'sw.js'
       - 'test-lab-branch.mjs'
+      - 'test-lab-interactions.cjs'
+      - '.github/workflows/lab-matrix-branch-control.yml'
 
 jobs:
   control:
@@ -29,3 +31,9 @@ jobs:
           node --check test-lab-branch.mjs
       - name: LAB branch control run
         run: node test-lab-branch.mjs
+      - name: Install browser test dependencies
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install --with-deps chromium
+      - name: LAB browser interactions (desktop and mobile)
+        run: node test-lab-interactions.cjs
