@@ -37,7 +37,7 @@ const html=fs.readFileSync('index.html','utf8');
 const js=fs.readFileSync('lab-branch.js','utf8');
 const css=fs.readFileSync('lab-branch.css','utf8');
 const sw=fs.readFileSync('sw.js','utf8');
-for(const needle of ['id="branchForecast"','id="branchArchive"','id="branchArchiveToggle"','id="branchArchiveBody"','Ступени','Три столба','ПОКА НЕАКТИВНО','lab-branch-core.js?v=1.7.2','lab-branch.js?v=1.7.2'])assert.ok(html.includes(needle),`index missing ${needle}`);
+for(const needle of ['id="branchForecast"','id="branchArchive"','id="branchArchiveToggle"','id="branchArchiveBody"','Ступени','Три столба','ПОКА НЕАКТИВНО','lab-branch-core.js?v=1.7.3','lab-branch.js?v=1.7.3'])assert.ok(html.includes(needle),`index missing ${needle}`);
 for(const needle of ['pozitron.lab.branch.archive.v1','status:\'pending\'','closePending','Frozen не переписывается','branchArrowToggle','branchArchiveToggle','branchTargetDraw','targetOpen','+03:00'])assert.ok(js.includes(needle),`branch js missing ${needle}`);
 assert.ok(js.startsWith("'use strict';"),'lab-branch.js must use strict mode');
 assert.ok(!js.includes('!window.state'),'lab-branch.js must not require window.state: app.js exposes lexical state');
@@ -46,7 +46,7 @@ assert.ok(js.includes('Date.now()<ms'),'late target guard must block post-draw f
 assert.ok(js.includes('НАЖАТЬ, ЧТОБЫ'),'branch card must visibly explain its click action');
 assert.ok(css.includes('.lab-legacy-runtime{display:none!important}'));
 assert.ok(css.includes('.lab-slot.disabled'));
-assert.ok(sw.includes("matrix-top3-v1.7.2-lab-branch"));
+assert.ok(sw.includes("matrix-top3-v1.7.3-lab-branch"));
 for(const asset of ['./lab-branch.css','./lab-branch-core.js','./lab-branch.js'])assert.ok(sw.includes(asset),`sw missing ${asset}`);
 
 console.log('LAB MATRIX BRANCH CONTROL: PASS');
