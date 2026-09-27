@@ -2,13 +2,59 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-09-27T21:02:26.685Z",
-  "latestHistoryDraw": 268688,
+  "updatedAt": "2026-09-27T21:32:17.292Z",
+  "latestHistoryDraw": 268689,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "268689|28.09.26|00:25",
+      "key": "268690|28.09.26|00:55",
       "status": "pending",
+      "savedAt": "2026-09-27T21:32:17.292Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 268690,
+        "date": "28.09.26",
+        "time": "00:55"
+      },
+      "current": {
+        "id": 268689,
+        "date": "28.09.26",
+        "time": "00:25",
+        "combo": [
+          4,
+          6,
+          7
+        ]
+      },
+      "repeat": null,
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          9,
+          3,
+          4
+        ],
+        "source": {
+          "id": 268593,
+          "date": "26.09.26",
+          "time": "00:25",
+          "combo": [
+            5,
+            3,
+            3
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "268689|28.09.26|00:25",
+      "status": "closed",
       "savedAt": "2026-09-27T21:02:26.685Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -76,9 +122,36 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 2,
+      "fact": {
+        "id": 268689,
+        "date": "28.09.26",
+        "time": "00:25",
+        "combo": [
+          4,
+          6,
+          7
+        ]
+      },
+      "closedAt": "2026-09-27T21:32:17.292Z",
+      "repeatEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "verticalEval": {
+        "hit": 2,
+        "result": "2/3",
+        "matched": [
+          4,
+          7
+        ],
+        "positions": 1,
+        "familyHit": false
+      },
+      "bestResult": "2/3"
     },
     {
       "key": "268688|27.09.26|23:55",
