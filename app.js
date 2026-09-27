@@ -77,7 +77,7 @@ function initActiveDigitsCollapse(){
   if(!document.getElementById('activeDigitsCollapseStyle')){
     const style=document.createElement('style');
     style.id='activeDigitsCollapseStyle';
-    style.textContent='.active-card-toggle-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.active-card-toggle-head h3{margin:0!important}.active-card-toggle-btn{min-height:44px;border:1px solid #315678;background:#0a2139;color:#dcecff;border-radius:12px;padding:8px 12px;font-weight:850;cursor:pointer;touch-action:manipulation;white-space:nowrap}.active-card-toggle-btn:active{transform:translateY(1px);background:#0d2b48}.active-card-toggle-btn:focus-visible{outline:3px solid #55d8ff;outline-offset:2px}.active-card.active-card-collapsed{padding-top:12px!important;padding-bottom:12px!important}.active-card.active-card-collapsed .active-card-toggle-head{margin-bottom:0}@media(max-width:900px){.active-card-toggle-btn{font-size:13px;padding:8px 10px}.active-card-toggle-head{gap:8px}}';
+    style.textContent='.active-card-toggle-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.active-card-toggle-head h3{margin:0!important}.active-card-toggle-btn{min-height:44px;border:1px solid #315678;background:#0a2139;color:#dcecff;border-radius:12px;padding:8px 12px;font-weight:850;cursor:pointer;touch-action:manipulation;white-space:nowrap}.active-card-toggle-btn:active{transform:translateY(1px);background:#0d2b48}.active-card-toggle-btn:focus-visible{outline:3px solid #55d8ff;outline-offset:2px}.active-card.active-card-collapsed{padding-top:12px!important;padding-bottom:12px!important}.active-card.active-card-collapsed .active-card-toggle-head{margin-bottom:0}.active-card.active-card-collapsed #activeDigitButtons,.active-card.active-card-collapsed #selectedCount{display:none!important}@media(max-width:900px){.active-card-toggle-btn{font-size:13px;padding:8px 10px}.active-card-toggle-head{gap:8px}}';
     document.head.appendChild(style);
   }
 
@@ -85,7 +85,13 @@ function initActiveDigitsCollapse(){
   title.parentNode.insertBefore(head,title);head.appendChild(title);
   const button=document.createElement('button');button.type='button';button.className='active-card-toggle-btn';button.setAttribute('aria-controls','activeDigitButtons selectedCount');head.appendChild(button);
   let collapsed=false;try{collapsed=localStorage.getItem('pozitron.matrix.activeDigits.collapsed.v1')==='1'}catch(_){}
-  const apply=()=>{card.classList.toggle('active-card-collapsed',collapsed);grid.hidden=collapsed;count.hidden=collapsed;button.setAttribute('aria-expanded',String(!collapsed));button.textContent=collapsed?'Развернуть ▼':'Свернуть ▲';button.title=collapsed?'Показать активные цифры':'Скрыть активные цифры'};
+  const apply=()=>{
+    card.classList.toggle('active-card-collapsed',collapsed);
+    if(collapsed){grid.style.setProperty('display','none','important');count.style.setProperty('display','none','important')}
+    else{grid.style.removeProperty('display');count.style.removeProperty('display')}
+    grid.hidden=collapsed;count.hidden=collapsed;
+    button.setAttribute('aria-expanded',String(!collapsed));button.textContent=collapsed?'Развернуть ▼':'Свернуть ▲';button.title=collapsed?'Показать активные цифры':'Скрыть активные цифры';
+  };
   button.addEventListener('click',()=>{collapsed=!collapsed;try{localStorage.setItem('pozitron.matrix.activeDigits.collapsed.v1',collapsed?'1':'0')}catch(_){}apply()});
   apply();
 }
