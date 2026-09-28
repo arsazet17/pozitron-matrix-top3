@@ -2,13 +2,69 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-09-28T10:32:33.213Z",
-  "latestHistoryDraw": 268715,
+  "updatedAt": "2026-09-28T11:02:46.596Z",
+  "latestHistoryDraw": 268716,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "268716|28.09.26|13:55",
+      "key": "268717|26.09.28|14:25",
       "status": "pending",
+      "savedAt": "2026-09-28T11:02:46.596Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 268717,
+        "date": "26.09.28",
+        "time": "14:25"
+      },
+      "current": {
+        "id": 268716,
+        "date": "26.09.28",
+        "time": "13:55",
+        "combo": [
+          1,
+          4,
+          4
+        ]
+      },
+      "repeat": {
+        "kind": "repeat-add",
+        "label": "ПОВТОР +",
+        "prediction": [
+          8,
+          1,
+          4
+        ],
+        "previous": {
+          "id": 268594,
+          "date": "26.09.26",
+          "time": "00:55",
+          "combo": [
+            1,
+            4,
+            4
+          ]
+        },
+        "follower": {
+          "id": 268595,
+          "date": "26.09.26",
+          "time": "01:25",
+          "combo": [
+            7,
+            7,
+            0
+          ]
+        }
+      },
+      "vertical": null,
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "268716|28.09.26|13:55",
+      "status": "closed",
       "savedAt": "2026-09-28T10:32:33.213Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -48,9 +104,92 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 0,
+      "fact": {
+        "id": 268716,
+        "date": "26.09.28",
+        "time": "13:55",
+        "combo": [
+          1,
+          4,
+          4
+        ]
+      },
+      "closedAt": "2026-09-28T11:02:46.596Z",
+      "repeatEval": null,
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "0/3"
+    },
+    {
+      "key": "268716|26.09.28|13:55",
+      "status": "closed",
+      "savedAt": null,
+      "closedAt": null,
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0 BACKFILL",
+      "serverFrozen": false,
+      "backfill": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 268716,
+        "date": "26.09.28",
+        "time": "13:55"
+      },
+      "current": {
+        "id": 268715,
+        "date": "28.09.26",
+        "time": "13:25",
+        "combo": [
+          4,
+          7,
+          9
+        ]
+      },
+      "repeat": null,
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          9,
+          6,
+          3
+        ],
+        "source": {
+          "id": 268619,
+          "date": "26.09.26",
+          "time": "13:25",
+          "combo": [
+            5,
+            1,
+            6
+          ]
+        }
+      },
+      "fact": {
+        "id": 268716,
+        "date": "26.09.28",
+        "time": "13:55",
+        "combo": [
+          1,
+          4,
+          4
+        ]
+      },
+      "repeatEval": null,
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestHit": 0,
+      "bestResult": "0/3"
     },
     {
       "key": "268715|28.09.26|13:25",
