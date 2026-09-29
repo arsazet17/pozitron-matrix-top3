@@ -15,7 +15,7 @@ const NEW_PAGES=[
 ];
 
 const clean=s=>String(s??'').replace(/\u00a0/g,' ').replace(/\s+/g,' ').trim();
-const validTime=s=>/^\d{2}:\d{2}$/.test(String(s));
+const validTime=s=>/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(s));
 function validDate(s){
   const m=String(s).match(/^(\d{2})\.(\d{2})\.(\d{2})$/); if(!m)return false;
   const d=+m[1],mo=+m[2],y=2000+(+m[3]),x=new Date(Date.UTC(y,mo-1,d));
@@ -43,12 +43,20 @@ function stamp(d){
 }
 function fmtDateAny(v){
   if(v==null)return '';
-  const s=String(v);
-  let m=s.match(/(\d{2})[.\/-](\d{2})[.\/-](\d{2}|\d{4})/);
+  const s=String(v).trim();
+  // Match the whole date prefix: an ISO year must never become the day.
+  const iso=s.match(/^(\d{4})-(\d{2})-(\d{2})(?=$|[T\s])/);
+  if(iso&&!/(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)){
+    const date=`${iso[3]}.${iso[2]}.${iso[1].slice(-2)}`;
+    return validDate(date)?date:'';
+  }
+  const m=s.match(/^(\d{2})[.\/-](\d{2})[.\/-](\d{4}|\d{2})(?=$|[T\s])/);
   if(m){
     const yy=String(m[3]).length===4?String(m[3]).slice(-2):m[3];
-    return `${m[1]}.${m[2]}.${yy}`;
+    const date=`${m[1]}.${m[2]}.${yy}`;
+    return validDate(date)?date:'';
   }
+  if(!iso&&typeof v!=='number'&&!(v instanceof Date))return '';
   const dt=new Date(v);
   if(!Number.isNaN(dt.getTime())){
     const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',year:'2-digit'}).formatToParts(dt);
@@ -59,9 +67,13 @@ function fmtDateAny(v){
 }
 function fmtTimeAny(v){
   if(v==null)return '';
-  const s=String(v);
-  let m=s.match(/(?:^|T|\s)(\d{2}):(\d{2})(?::\d{2})?/);
-  if(m)return `${m[1]}:${m[2]}`;
+  const s=String(v).trim();
+  const zoned=/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:?\d{2})$/i.test(s);
+  const m=s.match(/(?:^|T|\s)(\d{2}):(\d{2})(?::\d{2})?/);
+  if(m&&!zoned){
+    const time=`${m[1]}:${m[2]}`;
+    return validTime(time)?time:'';
+  }
   const dt=new Date(v);
   if(!Number.isNaN(dt.getTime()))
     return new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/Moscow',hour:'2-digit',minute:'2-digit',hour12:false}).format(dt);
@@ -259,6 +271,7 @@ async function main(){
 
   let prev=anchor;
   for(const d of newer){
+    if(stamp(d)>Date.now()+5*60*1000)throw new Error(`будущая дата у завершённого тиража №${d.id}: ${d.date} ${d.time}`);
     if(stamp(d)<=stamp(prev))throw new Error(`нарушена хронология №${prev.id} -> №${d.id}`);
     prev=d;
   }
