@@ -2,6 +2,10 @@ name: Update TOP-3 data
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/update-top3.yml'
+      - 'update-top3-stoloto-oauth.mjs'
 
 permissions:
   contents: write
@@ -52,17 +56,33 @@ jobs:
       - name: Close three-columns fact and freeze next target
         run: node scripts/three-columns-archive-top3-server.cjs
       - name: Save verified TOP-3 facts and archives together
+        env:
+          STOLOTO_EMAIL: ${{ secrets.STOLOTO_EMAIL }}
+          STOLOTO_PASSWORD: ${{ secrets.STOLOTO_PASSWORD }}
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet -- top3-live.json branch-archive-top3.json three-columns-archive-top3.json; then
-            echo "TOP-3 facts and archives are already current"
-            exit 0
-          fi
-          git add top3-live.json branch-archive-top3.json three-columns-archive-top3.json
-          git commit -m "Update TOP-3 facts and archives"
-          git fetch origin main
-          git rebase origin/main
-          git push origin HEAD:main
+          for save_attempt in 1 2 3; do
+            if git diff --quiet -- top3-live.json branch-archive-top3.json three-columns-archive-top3.json; then
+              echo "TOP-3 facts and archives are already current"
+              exit 0
+            fi
+            git add top3-live.json branch-archive-top3.json three-columns-archive-top3.json
+            git commit -m "Update TOP-3 facts and archives"
+            if git push origin HEAD:main; then
+              exit 0
+            fi
+            if [ "$save_attempt" -eq 3 ]; then
+              echo "Could not save verified TOP-3 updates after three attempts"
+              exit 1
+            fi
+            # Another archive job may have advanced main. Rebuild on its fresh
+            # records instead of rebasing conflicting generated JSON or forcing a push.
+            git fetch origin main
+            git reset --hard origin/main
+            node update-top3-stoloto-oauth.mjs
+            node scripts/branch-archive-top3-server.cjs
+            node scripts/three-columns-archive-top3-server.cjs
+          done
