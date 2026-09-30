@@ -2,13 +2,59 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-09-30T00:02:46.020Z",
-  "latestHistoryDraw": 268786,
+  "updatedAt": "2026-09-30T00:32:15.674Z",
+  "latestHistoryDraw": 268787,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "268787|30.09.26|03:25",
+      "key": "268788|30.09.26|03:55",
       "status": "pending",
+      "savedAt": "2026-09-30T00:32:15.674Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 268788,
+        "date": "30.09.26",
+        "time": "03:55"
+      },
+      "current": {
+        "id": 268787,
+        "date": "30.09.26",
+        "time": "03:25",
+        "combo": [
+          6,
+          9,
+          7
+        ]
+      },
+      "repeat": null,
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          3,
+          5,
+          4
+        ],
+        "source": {
+          "id": 268695,
+          "date": "28.09.26",
+          "time": "03:25",
+          "combo": [
+            3,
+            4,
+            3
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "268787|30.09.26|03:25",
+      "status": "closed",
       "savedAt": "2026-09-30T00:02:46.020Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -48,9 +94,27 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 0,
+      "fact": {
+        "id": 268787,
+        "date": "30.09.26",
+        "time": "03:25",
+        "combo": [
+          6,
+          9,
+          7
+        ]
+      },
+      "closedAt": "2026-09-30T00:32:15.674Z",
+      "repeatEval": null,
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "0/3"
     },
     {
       "key": "268786|30.09.26|02:55",
