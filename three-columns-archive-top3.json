@@ -2,13 +2,87 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-09-30T17:32:32.757Z",
-  "latestHistoryDraw": 268821,
+  "updatedAt": "2026-09-30T18:02:35.425Z",
+  "latestHistoryDraw": 268822,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "268822|30.09.26|20:55",
+      "key": "268823|30.09.26|21:25",
       "status": "pending",
+      "savedAt": "2026-09-30T18:02:35.425Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 268823,
+        "date": "30.09.26",
+        "time": "21:25"
+      },
+      "current": {
+        "id": 268822,
+        "date": "30.09.26",
+        "time": "20:55",
+        "combo": [
+          4,
+          4,
+          3
+        ]
+      },
+      "repeat": {
+        "kind": "repeat-add",
+        "label": "ПОВТОР +",
+        "prediction": [
+          8,
+          6,
+          3
+        ],
+        "previous": {
+          "id": 268580,
+          "date": "25.09.26",
+          "time": "17:55",
+          "combo": [
+            4,
+            4,
+            3
+          ]
+        },
+        "follower": {
+          "id": 268581,
+          "date": "25.09.26",
+          "time": "18:25",
+          "combo": [
+            4,
+            2,
+            0
+          ]
+        }
+      },
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          4,
+          2,
+          5
+        ],
+        "source": {
+          "id": 268730,
+          "date": "28.09.26",
+          "time": "20:55",
+          "combo": [
+            0,
+            2,
+            8
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "268822|30.09.26|20:55",
+      "status": "closed",
       "savedAt": "2026-09-30T17:32:32.757Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -48,9 +122,27 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 0,
+      "fact": {
+        "id": 268822,
+        "date": "30.09.26",
+        "time": "20:55",
+        "combo": [
+          4,
+          4,
+          3
+        ]
+      },
+      "closedAt": "2026-09-30T18:02:35.425Z",
+      "repeatEval": null,
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "0/3"
     },
     {
       "key": "268821|30.09.26|20:25",
