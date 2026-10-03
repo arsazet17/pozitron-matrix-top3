@@ -2,13 +2,59 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-10-03T04:32:12.071Z",
-  "latestHistoryDraw": 268939,
+  "updatedAt": "2026-10-03T05:02:28.903Z",
+  "latestHistoryDraw": 268940,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "268940|03.10.26|07:55",
+      "key": "268941|03.10.26|08:25",
       "status": "pending",
+      "savedAt": "2026-10-03T05:02:28.903Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 268941,
+        "date": "03.10.26",
+        "time": "08:25"
+      },
+      "current": {
+        "id": 268940,
+        "date": "03.10.26",
+        "time": "07:55",
+        "combo": [
+          6,
+          0,
+          9
+        ]
+      },
+      "repeat": null,
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          0,
+          5,
+          7
+        ],
+        "source": {
+          "id": 268844,
+          "date": "01.10.26",
+          "time": "07:55",
+          "combo": [
+            6,
+            5,
+            2
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "268940|03.10.26|07:55",
+      "status": "closed",
       "savedAt": "2026-10-03T04:32:12.071Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -76,9 +122,38 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 2,
+      "fact": {
+        "id": 268940,
+        "date": "03.10.26",
+        "time": "07:55",
+        "combo": [
+          6,
+          0,
+          9
+        ]
+      },
+      "closedAt": "2026-10-03T05:02:28.903Z",
+      "repeatEval": {
+        "hit": 2,
+        "result": "2/3",
+        "matched": [
+          0,
+          6
+        ],
+        "positions": 0,
+        "familyHit": false
+      },
+      "verticalEval": {
+        "hit": 1,
+        "result": "1/3",
+        "matched": [
+          9
+        ],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "2/3"
     },
     {
       "key": "268939|03.10.26|07:25",
