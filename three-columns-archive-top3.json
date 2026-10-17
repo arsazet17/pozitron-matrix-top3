@@ -2,13 +2,59 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-10-17T11:02:35.172Z",
-  "latestHistoryDraw": 269620,
+  "updatedAt": "2026-10-17T11:32:26.368Z",
+  "latestHistoryDraw": 269621,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "269621|17.10.26|14:25",
+      "key": "269622|17.10.26|14:55",
       "status": "pending",
+      "savedAt": "2026-10-17T11:32:26.368Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 269622,
+        "date": "17.10.26",
+        "time": "14:55"
+      },
+      "current": {
+        "id": 269621,
+        "date": "17.10.26",
+        "time": "14:25",
+        "combo": [
+          6,
+          1,
+          8
+        ]
+      },
+      "repeat": null,
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          7,
+          3,
+          6
+        ],
+        "source": {
+          "id": 269525,
+          "date": "15.10.26",
+          "time": "14:25",
+          "combo": [
+            9,
+            8,
+            2
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "269621|17.10.26|14:25",
+      "status": "closed",
       "savedAt": "2026-10-17T11:02:35.172Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -48,9 +94,27 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 0,
+      "fact": {
+        "id": 269621,
+        "date": "17.10.26",
+        "time": "14:25",
+        "combo": [
+          6,
+          1,
+          8
+        ]
+      },
+      "closedAt": "2026-10-17T11:32:26.368Z",
+      "repeatEval": null,
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "0/3"
     },
     {
       "key": "269620|17.10.26|13:55",
