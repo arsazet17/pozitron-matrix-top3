@@ -60,7 +60,7 @@ const orderCss=fs.readFileSync('matrix-order.css','utf8');
 const sw=fs.readFileSync('sw.js','utf8');
 const serverScript=fs.readFileSync('scripts/branch-archive-top3-server.cjs','utf8');
 const archive=JSON.parse(fs.readFileSync('branch-archive-top3.json','utf8'));
-for(const needle of ['id="branchForecast"','id="branchArchive"','id="branchArchiveToggle"','id="branchArchiveBody"','Ступени','Три столба','ПОКА НЕАКТИВНО','branch-archive-top3.json','app.js?v=1.8.3','schedule-era.js?v=1.8.3','matrix-order.css?v=1.8.3','lab-branch-core.js?v=1.8.0','lab-branch.js?v=1.8.0','id="columnOrderButtons"','data-order="ABC"','data-order="ACB"','data-order="BAC"','data-order="BCA"','data-order="CAB"','data-order="CBA"'])assert.ok(html.includes(needle),`index missing ${needle}`);
+for(const needle of ['id="branchForecast"','id="branchArchive"','id="branchArchiveToggle"','id="branchArchiveBody"','Ступени','Три столба','ПОКА НЕАКТИВНО','branch-archive-top3.json','app.js?v=1.8.3','schedule-era.js?v=1.8.3','matrix-order.css?v=1.8.3','lab-branch-core.js?v=1.8.0','lab-branch.js?v=1.9.0','id="columnOrderButtons"','data-order="ABC"','data-order="ACB"','data-order="BAC"','data-order="BCA"','data-order="CAB"','data-order="CBA"'])assert.ok(html.includes(needle),`index missing ${needle}`);
 for(const legacy of ['LAB MATRIX LEGACY','id="labForecast"','id="labSignals"','id="saveForecastBtn"','id="labArchive"','lab-detector.js','archive-delete.js'])assert.ok(!html.includes(legacy),`legacy HTML/script still present: ${legacy}`);
 for(const legacy of ['pozitron.labMatrix.predictions.v1','state.predictions','function labForecast','function renderLab','function saveForecast','function applyFacts','function renderArchive','function renderStats'])assert.ok(!app.includes(legacy),`legacy app runtime still present: ${legacy}`);
 assert.equal(fs.existsSync('lab-detector.js'),false,'lab-detector.js must be deleted');
@@ -78,7 +78,7 @@ assert.ok(js.includes('НАЖАТЬ, ЧТОБЫ'),'branch card must explain its 
 for(const needle of ['serverFrozen:true','closePending','branch-archive-top3.json','updateArchive'])assert.ok(serverScript.includes(needle),`server archive generator missing ${needle}`);
 assert.equal(archive.schema,1);assert.ok(Array.isArray(archive.records));
 for(const needle of ['.branch-control-card','.branch-visual','.branch-matrix-scroll','.bm-line.main','.bm-line.control','.branch-pair.control'])assert.ok(css.includes(needle),`css missing ${needle}`);
-assert.ok(sw.includes("matrix-top3-v1.8.3-column-order"));
+assert.ok(sw.includes("matrix-top3-v1.9.0-lab-view"));
 assert.ok(!sw.includes('lab-detector.js'),'service worker must not cache legacy detector');
 for(const asset of ['./lab-branch.css','./lab-branch-core.js','./lab-branch.js','./branch-archive-top3.json','./matrix-order.css','./schedule-era.js'])assert.ok(sw.includes(asset),`sw missing ${asset}`);
 

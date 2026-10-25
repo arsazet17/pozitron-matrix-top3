@@ -5,7 +5,7 @@
   if(!CORE)return;
   const UI_KEY='pozitron.lab.branch.ui.v1';
   const ARCHIVE_URL='./branch-archive-top3.json';
-  const VERSION='LAB BRANCH v1.8.0';
+  const VERSION='LAB BRANCH v1.9.0';
   const CUTOVER_ID=267756;
   let lastRenderKey='';
   let serverArchive=[];
@@ -17,7 +17,7 @@
   function readJson(key,fallback){try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch(_){return fallback}}
   function writeJson(key,value){localStorage.setItem(key,JSON.stringify(value))}
   const storedUi=readJson(UI_KEY,{});
-  const ui={collapsed:storedUi?.collapsed!==false,arrows:storedUi?.arrows===true,archiveOpen:storedUi?.archiveOpen===true||(storedUi?.archiveOpen===undefined&&storedUi?.archiveCollapsed===false)};
+  const ui={rows:6,collapsed:storedUi?.collapsed!==false,arrows:storedUi?.arrows===true,archiveOpen:storedUi?.archiveOpen===true||(storedUi?.archiveOpen===undefined&&storedUi?.archiveCollapsed===false)};
 
   function applyUi(){
     const toggle=$('#branchToggle'),detail=$('#branchDetail'),arrows=$('#branchArrows'),arrowToggle=$('#branchArrowToggle');
@@ -36,6 +36,7 @@
     if(button.id==='branchToggle')ui.collapsed=!ui.collapsed;
     else if(button.id==='branchArrowToggle'){ui.arrows=!ui.arrows;ui.collapsed=false}
     else if(button.id==='branchArchiveToggle')ui.archiveOpen=!ui.archiveOpen;
+    else if(button.id==='lb2More'){ui.rows=Math.min(60,ui.rows+10);lastRenderKey='';render();return}
     else return;
     applyUi();
     try{writeJson(UI_KEY,ui)}catch(_){/* UI remains usable without storage. */}
@@ -106,6 +107,8 @@
     const records=readArchive();
     if(!serverLoaded)return {records,frozen:null,reason:'server-loading'};
     const target=branchTargetDraw();
+    const newestPending=records.filter(r=>r.status==='pending'&&r.target).sort((a,b)=>Number(b.target.id||0)-Number(a.target.id||0))[0];
+    if(newestPending&&(!target||Number(newestPending.target.id||0)>=Number(target.id||0)))return {records,frozen:newestPending,reason:'server-frozen'};
     if(!target)return {records,frozen:null,reason:'no-target'};
     const existing=records.find(r=>r.key===targetKey(target));
     if(existing)return {records,frozen:existing,reason:'server-frozen'};
@@ -167,17 +170,42 @@
     const left=Math.max(0,cell.offsetLeft-sc.clientWidth*.62);sc.scrollTo({left,behavior:'smooth'});
   }
 
+
+  // ---- LAB VIEW v1.9: главное сверху, итог, лента, честный счёт, открытый архив ----
+  const CHANCE_ONE=48.8,CHANCE_TWO=5.4;
+  function closedRecords(records){return (records||[]).filter(r=>r.status==='closed'&&r.target).sort((a,b)=>Number(b.target.id||0)-Number(a.target.id||0))}
+  function hlDigits(combo,matched,cls){const left=[...(matched||[])];return `<span class="lb2-digs">${(combo||[]).map(n=>{const i=left.indexOf(n);if(i>=0){left.splice(i,1);return `<i class="m ${cls}">${n}</i>`}return `<i>${n}</i>`}).join('')}</span>`}
+  function hlPrediction(pred,matched,cls){const set=new Set(matched||[]);return `<span class="lb2-digs">${(pred||[]).map(n=>`<i class="${set.has(n)?'m '+cls:''}">${n}</i>`).join('')}</span>`}
+  function chip(r){const h=Number(r?.hit);const cls=h>=2?'hit':h===1?'part':'miss';return `<span class="lb2-chip ${cls}">${r?.result||'—'}</span>`}
+  function rateLine(label,part,all,chance,cls){const p=part.n?part.k/part.n*100:0,a=all.n?all.k/all.n*100:0;return `<div class="lb2-rate"><div class="lb2-rate-text">${label}: <b>${part.n?Math.round(p):'—'}%</b> / <b>${all.n?a.toFixed(1):'—'}%</b> <span>· наугад ${String(chance).replace('.',',')}%</span></div><div class="lb2-bar"><div class="lb2-fill ${cls}" style="width:${Math.min(100,p)}%"></div><div class="lb2-chance" style="left:${chance}%"></div></div></div>`}
+  function countdownHtml(t,id){const ms=targetEpoch(t);return `<span id="${id}" class="lb2-countdown" data-epoch="${Number.isFinite(ms)?ms:''}"></span>`}
+  function tickCountdowns(){document.querySelectorAll('.lb2-countdown[data-epoch]').forEach(el=>{const ms=Number(el.dataset.epoch);if(!Number.isFinite(ms)||!el.dataset.epoch){el.textContent='';return}const left=ms-Date.now();let txt;if(left>60000)txt=`⏱ через ${Math.floor(left/60000)} мин`;else if(left>0)txt='⏱ меньше минуты';else txt='⏳ тираж прошёл — ждём результат и новый прогноз';if(el.textContent!==txt)el.textContent=txt;el.classList.toggle('late',left<=0)})}
+  function overviewHtml(frozen,records){
+    const closed=closedRecords(records),last=closed[0],serverFrozen=frozen&&frozen.serverFrozen===true&&frozen.status!=='preview';
+    const placed=serverFrozen&&frozen.savedAt?`зафиксирован ${new Date(frozen.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`:'предпросмотр · ждём фиксацию на сервере';
+    const hero=frozen?`<section class="lb2-hero"><div class="lb2-hero-text"><small>СЛЕДУЮЩИЙ ТИРАЖ</small><b class="lb2-time">${frozen.target.time}</b><span class="lb2-sub">№${frozen.target.id||'—'} · ${frozen.target.date}</span>${countdownHtml(frozen.target,'lb2Countdown')}<span class="lb2-placed">${placed}</span></div><div class="lb2-big">${(frozen.prediction||[]).map(n=>`<i>${n}</i>`).join('')}</div></section>`:'';
+    const lastHtml=last?`<section class="lb2-box lb2-last"><small>ПРОШЛЫЙ ТИРАЖ · ${last.target.time} · ${last.target.date}</small><div class="lb2-last-row"><span class="lb2-lbl">выпало</span>${hlDigits(last.fact?.combo,last.matched,'g')}<span class="lb2-lbl">ставили</span>${hlPrediction(last.prediction,last.matched,'g')}${chip(last)}</div></section>`:'';
+    const tail=closed.slice(0,frozen?11:12).reverse();
+    const cells=tail.map(r=>{const h=Number(r.hit);return `<i class="${h>=2?'hit':h===1?'part':'miss'}" title="${r.target.time} · ${r.result}"></i>`}).join('')+(frozen?'<i class="wait" title="ждём"></i>':'');
+    const ribbon=tail.length?`<section class="lb2-box"><small>ПОСЛЕДНИЕ ${tail.length+(frozen?1:0)} · старые слева → новые справа</small><div class="lb2-ribbon">${cells}</div><div class="lb2-legend"><span><i class="hit"></i>2/2</span><span><i class="part"></i>1/2</span><span><i class="miss"></i>0/2</span>${frozen?'<span><i class="wait"></i>ждём</span>':''}</div></section>`:'';
+    const cnt=(list,f)=>({n:list.length,k:list.filter(f).length}),l50=closed.slice(0,50);
+    const score=closed.length?`<section class="lb2-box"><small>ЧЕСТНЫЙ СЧЁТ · последние ${l50.length} / весь архив ${closed.length}</small>${rateLine('Хотя бы 1 цифра',cnt(l50,r=>r.hit>=1),cnt(closed,r=>r.hit>=1),CHANCE_ONE,'part')}${rateLine('Обе цифры',cnt(l50,r=>r.hit>=2),cnt(closed,r=>r.hit>=2),CHANCE_TWO,'hit')}<div class="lb2-note">белая черта — уровень «наугад»</div></section>`:'';
+    const rows=closed.slice(0,ui.rows).map(r=>`<div class="lb2-tr"><b>${r.target.time}<em>${r.target.date.slice(0,5)}</em></b>${hlPrediction(r.prediction,r.matched,r.hit>=2?'g':'y')}${hlDigits(r.fact?.combo,r.matched,r.hit>=2?'g':'y')}${chip(r)}</div>`).join('');
+    const table=closed.length?`<section class="lb2-box lb2-table"><small>АРХИВ · последние ${Math.min(ui.rows,closed.length)} · совпавшие цифры подсвечены</small><div class="lb2-th"><span>время</span><span>прогноз</span><span>выпало</span><span>итог</span></div>${rows}${closed.length>ui.rows&&ui.rows<60?'<button id="lb2More" type="button" class="lb2-more">Показать ещё ›</button>':''}</section>`:'';
+    return hero+lastHtml+ribbon+score+table;
+  }
+
   function renderForecast(frozen,reason){
     const root=$('#branchForecast');if(!root)return;
     if(!frozen){
       const msg=reason==='server-loading'?'Загружаю branch-archive-top3.json…':reason==='server-error'?`Серверный архив временно недоступен: ${serverError}`:reason==='server-wait'?'Время следующего тиража уже наступило. Ждём новый факт и серверную фиксацию следующего прогноза.':'Недостаточно данных для постановки.';
-      root.innerHTML=`<div class="branch-card"><button id="branchToggle" type="button" class="branch-summary" aria-controls="branchDetail"><span><b>🧭 Ветка на следующий тираж</b><small>Открыть состояние прогноза</small></span><span class="branch-chevron"></span></button><div id="branchDetail" class="branch-detail"><div class="branch-empty">${msg}</div></div></div>`;applyUi();return;
+      root.innerHTML=`<div class="branch-empty lb2-msg">${msg}</div>${overviewHtml(null,readArchive())}<div class="branch-card"><button id="branchToggle" type="button" class="branch-summary" aria-controls="branchDetail"><span><b>⚙ Как выбран прогноз</b><small>Открыть состояние прогноза</small></span><span class="branch-chevron"></span></button><div id="branchDetail" class="branch-detail"><div class="branch-empty">${msg}</div></div></div>`;applyUi();tickCountdowns();return;
     }
     const s0=frozen.s0,serverFrozen=frozen.serverFrozen===true&&frozen.status!=='preview';
     const storageText=serverFrozen?'SERVER FROZEN · branch-archive-top3.json':'ПРЕДПРОСМОТР · ждём SERVER FROZEN';
     const placedText=serverFrozen&&frozen.savedAt?isoLocal(frozen.savedAt):'ещё не записан на сервер';
-    root.innerHTML=`<div class="branch-card"><button id="branchToggle" class="branch-summary" type="button" aria-controls="branchDetail"><span><b>🧭 Ветка на следующий тираж</b><small><span id="branchToggleHint"></span> · цель ${frozen.target.date} · ${frozen.target.time}</small></span><span class="branch-summary-center"><strong>${fmtBranch(frozen.branch.d,frozen.branch.s)}</strong><em>${frozen.decision} · streak ${frozen.streak}</em></span><span class="branch-picks">${frozen.prediction.map(n=>`<i>${n}</i>`).join('')}</span><span class="branch-chevron">${ui.collapsed?'⌄':'⌃'}</span></button><div id="branchDetail" class="branch-detail"><div class="branch-meta-grid"><div><label>Целевой тираж</label><b>№${frozen.target.id||'—'} · ${frozen.target.date} ${frozen.target.time}</b></div><div><label>Время постановки</label><b>${placedText}</b></div><div><label>Решение</label><b>${frozen.decision} · streak ${frozen.streak}</b></div><div><label>Источник</label><b>${frozen.source.date} ${frozen.source.time} · ${fmtCombo(frozen.source.combo)}</b></div><div><label>Прогноз 2 цифры</label><b class="branch-two">${fmtCombo(frozen.prediction)}</b></div><div><label>Архивный score</label><b>${Math.round((frozen.branch.rate||0)*100)}% · n=${frozen.branch.samples}</b></div></div>${s0?`<section class="branch-control-card"><h3>Контроль того же D с S0</h3><div class="bcc-source"><label>Источник</label><b>${s0.source.date} ${s0.source.time} · ${fmtCombo(s0.source.combo)}</b></div><div class="bcc-param"><label>Параметр</label><b><span>D${frozen.branch.d}</span><span>S0</span></b></div><div class="bcc-pick"><label>Контрольные цифры</label>${pairHtml(s0.prediction,'control')}</div></section>`:''}<div class="branch-actions"><button id="branchArrowToggle" aria-controls="branchArrows" type="button" class="secondary-btn">${ui.arrows?'Скрыть стрелки':'Показать стрелки'}</button><span>${storageText}</span></div><div id="branchArrows">${branchMatrixHtml(frozen)}</div></div></div>`;
-    applyUi();
+    root.innerHTML=`${overviewHtml(frozen,readArchive())}<div class="branch-card lb2-tech"><button id="branchToggle" class="branch-summary" type="button" aria-controls="branchDetail"><span><b>⚙ Как выбран прогноз</b><small><span id="branchToggleHint"></span> · ветка ${fmtBranch(frozen.branch.d,frozen.branch.s)} · ${frozen.decision} · источник ${frozen.source.date} ${frozen.source.time}</small></span><span class="branch-chevron">${ui.collapsed?'⌄':'⌃'}</span></button><div id="branchDetail" class="branch-detail"><div class="branch-meta-grid"><div><label>Целевой тираж</label><b>№${frozen.target.id||'—'} · ${frozen.target.date} ${frozen.target.time}</b></div><div><label>Время постановки</label><b>${placedText}</b></div><div><label>Решение</label><b>${frozen.decision} · streak ${frozen.streak}</b></div><div><label>Источник</label><b>${frozen.source.date} ${frozen.source.time} · ${fmtCombo(frozen.source.combo)}</b></div><div><label>Прогноз 2 цифры</label><b class="branch-two">${fmtCombo(frozen.prediction)}</b></div><div><label>Архивный score</label><b>${Math.round((frozen.branch.rate||0)*100)}% · n=${frozen.branch.samples}</b></div></div>${s0?`<section class="branch-control-card"><h3>Контроль того же D с S0</h3><div class="bcc-source"><label>Источник</label><b>${s0.source.date} ${s0.source.time} · ${fmtCombo(s0.source.combo)}</b></div><div class="bcc-param"><label>Параметр</label><b><span>D${frozen.branch.d}</span><span>S0</span></b></div><div class="bcc-pick"><label>Контрольные цифры</label>${pairHtml(s0.prediction,'control')}</div></section>`:''}<div class="branch-actions"><button id="branchArrowToggle" aria-controls="branchArrows" type="button" class="secondary-btn">${ui.arrows?'Скрыть стрелки':'Показать стрелки'}</button><span>${storageText}</span></div><div id="branchArrows">${branchMatrixHtml(frozen)}</div></div></div>`;
+    applyUi();tickCountdowns();
   }
 
   function render(){
@@ -188,8 +216,11 @@
     lastRenderKey=rk;renderForecast(frozen,reason);renderArchive(records);
     const test=CORE.selfTest(),badge=$('#branchSelfTest');if(badge){badge.textContent=test.pass?'SELF-TEST PASS':'SELF-TEST FAIL';badge.className=`branch-selftest ${test.pass?'pass':'fail'}`}
   }
+  function syncControls(){const lab=$('#labView'),c=$('.controls');if(lab&&c){const on=lab.classList.contains('active');if(c.hidden!==on)c.hidden=on}}
   function boot(){
     const root=$('#labView');if(root)root.addEventListener('click',handleClick);
+    if(root&&'MutationObserver' in window)new MutationObserver(syncControls).observe(root,{attributes:true,attributeFilter:['class']});
+    syncControls();setInterval(tickCountdowns,1000);
     applyUi();render();loadServerArchive();
     setInterval(render,2500);
     setInterval(loadServerArchive,15000);

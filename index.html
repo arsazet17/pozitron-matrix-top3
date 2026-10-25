@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="matrix-order.css?v=1.8.3" />
   <link rel="stylesheet" href="lab-branch.css?v=1.8.0" />
   <link rel="stylesheet" href="lab-three-columns.css?v=1.0.0" />
+  <link rel="stylesheet" href="lab-view.css?v=1.9.0" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -19,7 +20,7 @@
     <div class="splash-sub">MATRIX TOP-3</div>
   </div>
   <main id="app" class="app hidden">
-    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.8.4 · COLLAPSIBLE MATRIX CARDS</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
+    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.9.0 · LAB VIEW</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
     <nav class="tabs" aria-label="Разделы"><button class="tab active" data-tab="matrix">Матрица ТОП-3</button><button class="tab" data-tab="horizontal">Горизонталь ТОП-3</button><button class="tab" data-tab="lab">🧪 LAB MATRIX</button></nav>
     <section class="controls card">
       <div class="control-group matrix-order-control"><label>Порядок столбов</label><div id="columnOrderButtons" class="column-order-grid" aria-label="Порядок столбов Матрицы ТОП-3"><button type="button" class="column-order-btn" data-order="ABC">ABC</button><button type="button" class="column-order-btn" data-order="ACB">ACB</button><button type="button" class="column-order-btn" data-order="BAC">BAC</button><button type="button" class="column-order-btn" data-order="BCA">BCA</button><button type="button" class="column-order-btn" data-order="CAB">CAB</button><button type="button" class="column-order-btn" data-order="CBA">CBA</button></div><div id="columnOrderHint" class="column-order-hint">Нет выбора → ABC</div></div>
@@ -29,7 +30,7 @@
 
     <section id="labView" class="view">
       <section class="card lab-module">
-        <div class="lab-module-head"><div><h2>🧪 LAB MATRIX</h2><p>нажимай на карточку «Ветка на следующий тираж» — она раскрывается</p></div><span id="branchSelfTest" class="branch-selftest">SELF-TEST…</span></div>
+        <div class="lab-module-head"><div><h2>🧪 LAB MATRIX</h2><p>🧭 Ветка · прогноз 2 цифры · главное сверху, детали — в «⚙ Как выбран прогноз»</p></div><span id="branchSelfTest" class="branch-selftest">SELF-TEST…</span></div>
         <div id="branchForecast"><div class="branch-empty">Загрузка ветки…</div></div>
       </section>
 
@@ -42,7 +43,7 @@
       </section>
 
       <section class="card tc-archive-card">
-        <div class="section-title-row"><div><h2>АРХИВ · ТРИ СТОЛБА</h2><p>SERVER · three-columns-archive-top3.json · отдельный от «Ветки»</p></div><button id="threeColumnsArchiveToggle" class="secondary-btn" type="button" aria-expanded="false" aria-controls="threeColumnsArchiveBody">Открыть архив</button></div>
+        <div class="section-title-row"><div><h2>ПОДРОБНЫЙ АРХИВ · ТРИ СТОЛБА</h2><p>SERVER · three-columns-archive-top3.json · отдельный от «Ветки»</p></div><button id="threeColumnsArchiveToggle" class="secondary-btn" type="button" aria-expanded="false" aria-controls="threeColumnsArchiveBody">Открыть архив</button></div>
         <div id="threeColumnsArchiveBody" hidden>
           <div id="threeColumnsArchiveStats" class="tc-archive-stats"></div>
           <div id="threeColumnsArchive" class="tc-archive"></div>
@@ -50,7 +51,7 @@
       </section>
 
       <section class="card branch-archive-card">
-        <div class="section-title-row"><div><h2>АРХИВ · ВЕТКА</h2><p>SERVER · branch-archive-top3.json · общий для телефона и компьютера</p></div><button id="branchArchiveToggle" class="secondary-btn" type="button" aria-expanded="false" aria-controls="branchArchiveBody">Открыть архив</button></div>
+        <div class="section-title-row"><div><h2>ПОДРОБНЫЙ АРХИВ · ВЕТКА</h2><p>SERVER · branch-archive-top3.json · общий для телефона и компьютера</p></div><button id="branchArchiveToggle" class="secondary-btn" type="button" aria-expanded="false" aria-controls="branchArchiveBody">Открыть архив</button></div>
         <div id="branchArchiveBody" hidden>
           <div id="branchArchiveStats" class="branch-archive-stats"></div>
           <div id="branchArchive" class="branch-archive"></div>
@@ -67,8 +68,8 @@
   <script src="schedule-era.js?v=1.8.3"></script>
   <script src="horizontal-matrix.js?v=1.4.3"></script>
   <script src="lab-branch-core.js?v=1.8.0"></script>
-  <script src="lab-branch.js?v=1.8.0"></script>
+  <script src="lab-branch.js?v=1.9.0"></script>
   <script src="lab-three-columns-core.js?v=1.0.0"></script>
-  <script src="lab-three-columns.js?v=1.0.0"></script>
+  <script src="lab-three-columns.js?v=1.9.0"></script>
 </body>
 </html>
