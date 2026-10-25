@@ -67,3 +67,20 @@
  .tc2-tr{grid-template-columns:44px 1fr 1fr 1fr 38px}
  .tc2-tr .lb2-digs i{min-width:17px;font-size:12px;padding:0 2px}
 }
+/* v1.10 · переключатель 2/3/4 цифры */
+.lb2-pickwrap{display:flex;flex-direction:column;align-items:flex-end;gap:8px;flex:0 0 auto}
+.lb2-big.k3 i{width:46px;height:54px;font-size:28px}
+.lb2-big.k4{gap:6px}
+.lb2-big.k4 i{width:40px;height:50px;font-size:25px;border-radius:12px}
+.lb2-kswitch{display:flex;align-items:center;gap:4px}
+.lb2-kswitch span{font-size:10px;color:#8fb0d0;font-weight:800;margin-right:2px}
+.lb2-kswitch button{min-width:30px;height:26px;border-radius:8px;border:1px solid #3f6a95;background:#0d2440;color:#cfe0f1;font-weight:900;font-size:13px;padding:0 6px}
+.lb2-kswitch button.active{background:#5aa2ff;border-color:#5aa2ff;color:#04131d}
+.lb2-tr.k3 .lb2-digs i,.lb2-tr.k4 .lb2-digs i{min-width:19px;height:24px;font-size:13px;padding:0 2px}
+.lb2-tr.k4 .lb2-digs{gap:2px}
+@media(max-width:360px){
+ .lb2-big.k3 i{width:40px;height:50px;font-size:25px}
+ .lb2-big.k4 i{width:33px;height:44px;font-size:22px}
+ .lb2-tr.k4 .lb2-digs i{min-width:16px;font-size:12px;padding:0 1px}
+ .lb2-th.k4,.lb2-tr.k4{grid-template-columns:48px 1fr 1fr 42px;gap:4px}
+}

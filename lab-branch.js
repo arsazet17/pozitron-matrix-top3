@@ -5,7 +5,7 @@
   if(!CORE)return;
   const UI_KEY='pozitron.lab.branch.ui.v1';
   const ARCHIVE_URL='./branch-archive-top3.json';
-  const VERSION='LAB BRANCH v1.9.0';
+  const VERSION='LAB BRANCH v1.10.0';
   const CUTOVER_ID=267756;
   let lastRenderKey='';
   let serverArchive=[];
@@ -17,7 +17,8 @@
   function readJson(key,fallback){try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch(_){return fallback}}
   function writeJson(key,value){localStorage.setItem(key,JSON.stringify(value))}
   const storedUi=readJson(UI_KEY,{});
-  const ui={rows:6,collapsed:storedUi?.collapsed!==false,arrows:storedUi?.arrows===true,archiveOpen:storedUi?.archiveOpen===true||(storedUi?.archiveOpen===undefined&&storedUi?.archiveCollapsed===false)};
+  const K_KEY='pozitron.lab.branch.k.v1';
+  const ui={k:(()=>{try{const v=Number(localStorage.getItem(K_KEY));return [2,3,4].includes(v)?v:2}catch(_){return 2}})(),rows:6,collapsed:storedUi?.collapsed!==false,arrows:storedUi?.arrows===true,archiveOpen:storedUi?.archiveOpen===true||(storedUi?.archiveOpen===undefined&&storedUi?.archiveCollapsed===false)};
 
   function applyUi(){
     const toggle=$('#branchToggle'),detail=$('#branchDetail'),arrows=$('#branchArrows'),arrowToggle=$('#branchArrowToggle');
@@ -36,6 +37,7 @@
     if(button.id==='branchToggle')ui.collapsed=!ui.collapsed;
     else if(button.id==='branchArrowToggle'){ui.arrows=!ui.arrows;ui.collapsed=false}
     else if(button.id==='branchArchiveToggle')ui.archiveOpen=!ui.archiveOpen;
+    else if(button.dataset.lb2K){const k=Number(button.dataset.lb2K);if([2,3,4].includes(k)){ui.k=k;try{localStorage.setItem(K_KEY,String(k))}catch(_){}}lastRenderKey='';render();return}
     else if(button.id==='lb2More'){ui.rows=Math.min(60,ui.rows+10);lastRenderKey='';render();return}
     else return;
     applyUi();
@@ -172,26 +174,31 @@
 
 
   // ---- LAB VIEW v1.9: главное сверху, итог, лента, честный счёт, открытый архив ----
-  const CHANCE_ONE=48.8,CHANCE_TWO=5.4;
+  const CHANCE={2:[48.8,5.4],3:[65.7,15.0],4:[78.4,27.6]};
+  // Расширение прогноза до k цифр только из данных, замороженных до тиража:
+  // 2 цифры движка → оставшиеся цифры источника (3-я по рейтингу движка) → контроль S0 → дальняя нить → по возрастанию.
+  function predK(r,k){if(k===2&&Array.isArray(r.prediction)&&r.prediction.length===2)return r.prediction.map(Number);const out=[];const add=a=>{for(const n of (a||[])){const x=Number(n);if(Number.isInteger(x)&&x>=0&&x<=9&&!out.includes(x)&&out.length<k)out.push(x)}};add(r.prediction);add(r.source?.combo);add(r.s0?.prediction);add(r.s0?.source?.combo);add(r.extended?.nextSource?.combo);add([0,1,2,3,4,5,6,7,8,9]);return out}
+  function evalK(r,k){const p=predK(r,k),left=[...(r.fact?.combo||[])].map(Number);const matched=p.filter(n=>{const i=left.indexOf(n);if(i<0)return false;left.splice(i,1);return true});return {pred:p,matched,hit:matched.length,result:`${matched.length}/${k}`}}
   function closedRecords(records){return (records||[]).filter(r=>r.status==='closed'&&r.target).sort((a,b)=>Number(b.target.id||0)-Number(a.target.id||0))}
   function hlDigits(combo,matched,cls){const left=[...(matched||[])];return `<span class="lb2-digs">${(combo||[]).map(n=>{const i=left.indexOf(n);if(i>=0){left.splice(i,1);return `<i class="m ${cls}">${n}</i>`}return `<i>${n}</i>`}).join('')}</span>`}
   function hlPrediction(pred,matched,cls){const set=new Set(matched||[]);return `<span class="lb2-digs">${(pred||[]).map(n=>`<i class="${set.has(n)?'m '+cls:''}">${n}</i>`).join('')}</span>`}
-  function chip(r){const h=Number(r?.hit);const cls=h>=2?'hit':h===1?'part':'miss';return `<span class="lb2-chip ${cls}">${r?.result||'—'}</span>`}
+  function chip(e){const h=Number(e?.hit);const cls=h>=2?'hit':h===1?'part':'miss';return `<span class="lb2-chip ${cls}">${e?.result||'—'}</span>`}
   function rateLine(label,part,all,chance,cls){const p=part.n?part.k/part.n*100:0,a=all.n?all.k/all.n*100:0;return `<div class="lb2-rate"><div class="lb2-rate-text">${label}: <b>${part.n?Math.round(p):'—'}%</b> / <b>${all.n?a.toFixed(1):'—'}%</b> <span>· наугад ${String(chance).replace('.',',')}%</span></div><div class="lb2-bar"><div class="lb2-fill ${cls}" style="width:${Math.min(100,p)}%"></div><div class="lb2-chance" style="left:${chance}%"></div></div></div>`}
   function countdownHtml(t,id){const ms=targetEpoch(t);return `<span id="${id}" class="lb2-countdown" data-epoch="${Number.isFinite(ms)?ms:''}"></span>`}
   function tickCountdowns(){document.querySelectorAll('.lb2-countdown[data-epoch]').forEach(el=>{const ms=Number(el.dataset.epoch);if(!Number.isFinite(ms)||!el.dataset.epoch){el.textContent='';return}const left=ms-Date.now();let txt;if(left>60000)txt=`⏱ через ${Math.floor(left/60000)} мин`;else if(left>0)txt='⏱ меньше минуты';else txt='⏳ тираж прошёл — ждём результат и новый прогноз';if(el.textContent!==txt)el.textContent=txt;el.classList.toggle('late',left<=0)})}
   function overviewHtml(frozen,records){
     const closed=closedRecords(records),last=closed[0],serverFrozen=frozen&&frozen.serverFrozen===true&&frozen.status!=='preview';
     const placed=serverFrozen&&frozen.savedAt?`зафиксирован ${new Date(frozen.savedAt).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}`:'предпросмотр · ждём фиксацию на сервере';
-    const hero=frozen?`<section class="lb2-hero"><div class="lb2-hero-text"><small>СЛЕДУЮЩИЙ ТИРАЖ</small><b class="lb2-time">${frozen.target.time}</b><span class="lb2-sub">№${frozen.target.id||'—'} · ${frozen.target.date}</span>${countdownHtml(frozen.target,'lb2Countdown')}<span class="lb2-placed">${placed}</span></div><div class="lb2-big">${(frozen.prediction||[]).map(n=>`<i>${n}</i>`).join('')}</div></section>`:'';
-    const lastHtml=last?`<section class="lb2-box lb2-last"><small>ПРОШЛЫЙ ТИРАЖ · ${last.target.time} · ${last.target.date}</small><div class="lb2-last-row"><span class="lb2-lbl">выпало</span>${hlDigits(last.fact?.combo,last.matched,'g')}<span class="lb2-lbl">ставили</span>${hlPrediction(last.prediction,last.matched,'g')}${chip(last)}</div></section>`:'';
+    const hero=frozen?`<section class="lb2-hero"><div class="lb2-hero-text"><small>СЛЕДУЮЩИЙ ТИРАЖ</small><b class="lb2-time">${frozen.target.time}</b><span class="lb2-sub">№${frozen.target.id||'—'} · ${frozen.target.date}</span>${countdownHtml(frozen.target,'lb2Countdown')}<span class="lb2-placed">${placed}</span></div><div class="lb2-pickwrap"><div class="lb2-big k${ui.k}">${predK(frozen,ui.k).map(n=>`<i>${n}</i>`).join('')}</div><div class="lb2-kswitch" role="group" aria-label="Сколько цифр в прогнозе"><span>цифр</span>${[2,3,4].map(k=>`<button type="button" data-lb2-k="${k}" class="${ui.k===k?'active':''}" aria-pressed="${ui.k===k}">${k}</button>`).join('')}</div></div></section>`:'';
+    const lastHtml=last?`<section class="lb2-box lb2-last"><small>ПРОШЛЫЙ ТИРАЖ · ${last.target.time} · ${last.target.date}</small><div class="lb2-last-row"><span class="lb2-lbl">выпало</span>${hlDigits(last.fact?.combo,evalK(last,ui.k).matched,'g')}<span class="lb2-lbl">ставили</span>${hlPrediction(evalK(last,ui.k).pred,evalK(last,ui.k).matched,'g')}${chip(evalK(last,ui.k))}</div></section>`:'';
     const tail=closed.slice(0,frozen?11:12).reverse();
-    const cells=tail.map(r=>{const h=Number(r.hit);return `<i class="${h>=2?'hit':h===1?'part':'miss'}" title="${r.target.time} · ${r.result}"></i>`}).join('')+(frozen?'<i class="wait" title="ждём"></i>':'');
-    const ribbon=tail.length?`<section class="lb2-box"><small>ПОСЛЕДНИЕ ${tail.length+(frozen?1:0)} · старые слева → новые справа</small><div class="lb2-ribbon">${cells}</div><div class="lb2-legend"><span><i class="hit"></i>2/2</span><span><i class="part"></i>1/2</span><span><i class="miss"></i>0/2</span>${frozen?'<span><i class="wait"></i>ждём</span>':''}</div></section>`:'';
+    const cells=tail.map(r=>{const e=evalK(r,ui.k),h=e.hit;return `<i class="${h>=2?'hit':h===1?'part':'miss'}" title="${r.target.time} · ${e.result}"></i>`}).join('')+(frozen?'<i class="wait" title="ждём"></i>':'');
+    const ribbon=tail.length?`<section class="lb2-box"><small>ПОСЛЕДНИЕ ${tail.length+(frozen?1:0)} · старые слева → новые справа</small><div class="lb2-ribbon">${cells}</div><div class="lb2-legend"><span><i class="hit"></i>2+</span><span><i class="part"></i>1</span><span><i class="miss"></i>0</span>${frozen?'<span><i class="wait"></i>ждём</span>':''}</div></section>`:'';
     const cnt=(list,f)=>({n:list.length,k:list.filter(f).length}),l50=closed.slice(0,50);
-    const score=closed.length?`<section class="lb2-box"><small>ЧЕСТНЫЙ СЧЁТ · последние ${l50.length} / весь архив ${closed.length}</small>${rateLine('Хотя бы 1 цифра',cnt(l50,r=>r.hit>=1),cnt(closed,r=>r.hit>=1),CHANCE_ONE,'part')}${rateLine('Обе цифры',cnt(l50,r=>r.hit>=2),cnt(closed,r=>r.hit>=2),CHANCE_TWO,'hit')}<div class="lb2-note">белая черта — уровень «наугад»</div></section>`:'';
-    const rows=closed.slice(0,ui.rows).map(r=>`<div class="lb2-tr"><b>${r.target.time}<em>${r.target.date.slice(0,5)}</em></b>${hlPrediction(r.prediction,r.matched,r.hit>=2?'g':'y')}${hlDigits(r.fact?.combo,r.matched,r.hit>=2?'g':'y')}${chip(r)}</div>`).join('');
-    const table=closed.length?`<section class="lb2-box lb2-table"><small>АРХИВ · последние ${Math.min(ui.rows,closed.length)} · совпавшие цифры подсвечены</small><div class="lb2-th"><span>время</span><span>прогноз</span><span>выпало</span><span>итог</span></div>${rows}${closed.length>ui.rows&&ui.rows<60?'<button id="lb2More" type="button" class="lb2-more">Показать ещё ›</button>':''}</section>`:'';
+    const hk=r=>evalK(r,ui.k).hit,[c1,c2]=CHANCE[ui.k];
+    const score=closed.length?`<section class="lb2-box"><small>ЧЕСТНЫЙ СЧЁТ · ${ui.k} цифры · последние ${l50.length} / весь архив ${closed.length}</small>${rateLine('Хотя бы 1 цифра',cnt(l50,r=>hk(r)>=1),cnt(closed,r=>hk(r)>=1),c1,'part')}${rateLine(ui.k===2?'Обе цифры':'2 цифры и больше',cnt(l50,r=>hk(r)>=2),cnt(closed,r=>hk(r)>=2),c2,'hit')}<div class="lb2-note">белая черта — уровень «наугад»</div></section>`:'';
+    const rows=closed.slice(0,ui.rows).map(r=>{const e=evalK(r,ui.k),c=e.hit>=2?'g':'y';return `<div class="lb2-tr k${ui.k}"><b>${r.target.time}<em>${r.target.date.slice(0,5)}</em></b>${hlPrediction(e.pred,e.matched,c)}${hlDigits(r.fact?.combo,e.matched,c)}${chip(e)}</div>`}).join('');
+    const table=closed.length?`<section class="lb2-box lb2-table"><small>АРХИВ · последние ${Math.min(ui.rows,closed.length)} · совпавшие цифры подсвечены</small><div class="lb2-th k${ui.k}"><span>время</span><span>прогноз</span><span>выпало</span><span>итог</span></div>${rows}${closed.length>ui.rows&&ui.rows<60?'<button id="lb2More" type="button" class="lb2-more">Показать ещё ›</button>':''}</section>`:'';
     return hero+lastHtml+ribbon+score+table;
   }
 
