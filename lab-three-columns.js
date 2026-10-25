@@ -24,8 +24,9 @@
   }
   async function loadArchive(){
     try{
-      const r=await fetch(`${ARCHIVE_URL}?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);
-      const j=await r.json();serverArchive=Array.isArray(j)?j:(j.records||[]);serverUpdatedAt=j.updatedAt||null;serverError='';serverLoaded=true;lastRenderKey='';render();
+      let j;
+      if(window.SmartRefresh){const res=await SmartRefresh.fetchJsonIfChanged(ARCHIVE_URL);if(!res.changed){serverLoaded=true;serverError='';return}j=res.data}
+      else{const r=await fetch(`${ARCHIVE_URL}?t=${Date.now()}`,{cache:'no-store'});if(!r.ok)throw new Error(`HTTP ${r.status}`);j=await r.json()}serverArchive=Array.isArray(j)?j:(j.records||[]);serverUpdatedAt=j.updatedAt||null;serverError='';serverLoaded=true;lastRenderKey='';render();
     }catch(e){serverLoaded=true;serverError=e?.message||String(e);lastRenderKey='';render();}
   }
   function activeRecord(){
@@ -109,7 +110,9 @@
   }
   function click(e){const b=e.target.closest('button');if(!b)return;if(b.id==='tc2More'){ui.rows=Math.min(60,ui.rows+10);lastRenderKey='';render();return}if(b.id==='threeColumnsToggle')ui.open=!ui.open;else if(b.id==='threeColumnsArchiveToggle')ui.archiveOpen=!ui.archiveOpen;else return;saveUi();applyUi();}
   function boot(){
-    const root=$('#labView');if(root)root.addEventListener('click',click);render();loadArchive();setInterval(render,2500);setInterval(loadArchive,15000);
+    const root=$('#labView');if(root)root.addEventListener('click',click);render();loadArchive();setInterval(render,30000);if(window.SmartRefresh)SmartRefresh.every(loadArchive,60000);else setInterval(loadArchive,60000);
+    document.addEventListener('top3:data',()=>{lastRenderKey='';render()});
+    if(root&&'MutationObserver' in window)new MutationObserver(()=>render()).observe(root,{attributes:true,attributeFilter:['class']});
     const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>setTimeout(loadArchive,900));
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
