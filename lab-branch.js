@@ -5,7 +5,7 @@
   if(!CORE)return;
   const UI_KEY='pozitron.lab.branch.ui.v1';
   const ARCHIVE_URL='./branch-archive-top3.json';
-  const VERSION='LAB BRANCH v1.10.0';
+  const VERSION='LAB BRANCH v1.11.0';
   const CUTOVER_ID=267756;
   let lastRenderKey='';
   let serverArchive=[];
@@ -52,10 +52,9 @@
 
   async function loadServerArchive(){
     try{
-      const sep=ARCHIVE_URL.includes('?')?'&':'?';
-      const response=await fetch(`${ARCHIVE_URL}${sep}t=${Date.now()}`,{cache:'no-store'});
-      if(!response.ok)throw new Error(`HTTP ${response.status}`);
-      const data=await response.json();
+      let data;
+      if(window.SmartRefresh){const res=await SmartRefresh.fetchJsonIfChanged(ARCHIVE_URL);if(!res.changed){serverLoaded=true;serverError='';return}data=res.data}
+      else{const sep=ARCHIVE_URL.includes('?')?'&':'?';const response=await fetch(`${ARCHIVE_URL}${sep}t=${Date.now()}`,{cache:'no-store'});if(!response.ok)throw new Error(`HTTP ${response.status}`);data=await response.json()}
       const records=Array.isArray(data)?data:Array.isArray(data?.records)?data.records:[];
       serverArchive=records;
       serverUpdatedAt=data?.updatedAt||null;
@@ -226,11 +225,13 @@
   function syncControls(){const lab=$('#labView'),c=$('.controls');if(lab&&c){const on=lab.classList.contains('active');if(c.hidden!==on)c.hidden=on}}
   function boot(){
     const root=$('#labView');if(root)root.addEventListener('click',handleClick);
-    if(root&&'MutationObserver' in window)new MutationObserver(syncControls).observe(root,{attributes:true,attributeFilter:['class']});
+    if(root&&'MutationObserver' in window)new MutationObserver(()=>{syncControls();render()}).observe(root,{attributes:true,attributeFilter:['class']});
+    document.addEventListener('top3:data',()=>{lastRenderKey='';render()});
     syncControls();setInterval(tickCountdowns,1000);
     applyUi();render();loadServerArchive();
-    setInterval(render,2500);
-    setInterval(loadServerArchive,15000);
+    // Тиражи раз в 30 минут: перерисовка раз в 30 с, проверка архива раз в минуту (304, если не менялся).
+    setInterval(render,30000);
+    if(window.SmartRefresh)SmartRefresh.every(loadServerArchive,60000);else setInterval(loadServerArchive,60000);
     const refresh=$('#refreshBtn');if(refresh)refresh.addEventListener('click',()=>{setTimeout(render,600);setTimeout(loadServerArchive,900)});
     window.addEventListener('resize',()=>{if(ui.arrows)centerBranchMatrix()});
   }

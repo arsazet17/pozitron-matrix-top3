@@ -19,9 +19,11 @@ function matrixOrder(){return MATRIX_ORDERS.includes(state.columnOrder)?state.co
 async function load(){
   const seed=Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[];let live=[];
   try{
-    const r=await fetch(`${LIVE_URL}?t=${Date.now()}`,{cache:'no-store'});
-    if(r.ok){
-      const j=await r.json();live=j.draws||[];
+    let j=null;
+    if(window.SmartRefresh){const res=await SmartRefresh.fetchJsonIfChanged(LIVE_URL);j=res.changed?res.data:null}
+    else{const r=await fetch(`${LIVE_URL}?t=${Date.now()}`,{cache:'no-store'});if(r.ok)j=await r.json()}
+    if(j){
+      live=j.draws||[];
       const official=Array.isArray(j.regularTimes)?j.regularTimes.filter(t=>OFFICIAL_TIMES.includes(t)):[];
       state.regularTimes=official.length===OFFICIAL_TIMES.length?[...official].sort():[...OFFICIAL_TIMES];
       state.updatedAt=j.updatedAt||null;state.source=j.source||'live';
@@ -29,6 +31,20 @@ async function load(){
   }catch(e){state.regularTimes=[...OFFICIAL_TIMES]}
   state.draws=unique([...live,...seed]);
   $('#totalCount').textContent=state.draws.length.toLocaleString('ru-RU');updateStatus();renderAll();
+}
+// Автообновление тиражей: раз в минуту «изменился ли top3-live.json?»; качаем только новый.
+async function refreshLive(){
+  if(!window.SmartRefresh||!state.draws.length)return;
+  const res=await SmartRefresh.fetchJsonIfChanged(LIVE_URL);if(!res.changed)return;
+  const j=res.data,seed=Array.isArray(window.TOP3_SEED)?window.TOP3_SEED:[];
+  const official=Array.isArray(j.regularTimes)?j.regularTimes.filter(t=>OFFICIAL_TIMES.includes(t)):[];
+  state.regularTimes=official.length===OFFICIAL_TIMES.length?[...official].sort():[...OFFICIAL_TIMES];
+  state.updatedAt=j.updatedAt||state.updatedAt;state.source=j.source||state.source;
+  const before=state.draws[0]?.id,count=state.draws.length;
+  state.draws=unique([...(j.draws||[]),...seed]);
+  $('#totalCount').textContent=state.draws.length.toLocaleString('ru-RU');updateStatus();
+  if(state.draws[0]?.id!==before||state.draws.length!==count)renderAll();
+  document.dispatchEvent(new CustomEvent('top3:data'));
 }
 function updateStatus(){let txt='Обновлено: архив';if(state.updatedAt){const d=new Date(state.updatedAt);txt=`Обновлено: ${d.toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}`;}$('#updatedText').textContent=txt;}
 function filteredByDays(){if(!state.draws.length)return[];const latest=parseDate(state.draws[0].date);const min=new Date(latest);min.setUTCDate(min.getUTCDate()-(state.days-1));return state.draws.filter(d=>parseDate(d.date)>=min)}
@@ -96,4 +112,4 @@ function initActiveDigitsCollapse(){
   apply();
 }
 
-window.addEventListener('load',async()=>{bind();initActiveDigitsCollapse();await load();setTimeout(()=>{$('#splash').classList.add('hidden');$('#app').classList.remove('hidden')},650);if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})});
+window.addEventListener('load',async()=>{bind();initActiveDigitsCollapse();await load();if(window.SmartRefresh)SmartRefresh.every(refreshLive,60000);setTimeout(()=>{$('#splash').classList.add('hidden');$('#app').classList.remove('hidden')},650);if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})});

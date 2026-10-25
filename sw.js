@@ -1,6 +1,6 @@
-const CACHE='matrix-top3-v1.10.0-lab-k';
-const ASSETS=['./','./index.html','./styles.css','./matrix-order.css','./lab-branch.css','./lab-three-columns.css','./lab-view.css','./app.js','./matrix-card-collapse.js','./schedule-era.js','./lab-branch-core.js','./lab-branch.js','./lab-three-columns-core.js','./lab-three-columns.js','./top3-data.js','./top3-live.json','./branch-archive-top3.json','./three-columns-archive-top3.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
-const NETWORK_FIRST=['/','/index.html','/app.js','/matrix-card-collapse.js','/schedule-era.js','/lab-branch-core.js','/lab-branch.js','/lab-three-columns-core.js','/lab-three-columns.js','/styles.css','/matrix-order.css','/lab-branch.css','/lab-three-columns.css','/lab-view.css','/top3-live.json','/branch-archive-top3.json','/three-columns-archive-top3.json'];
+const CACHE='matrix-top3-v1.11.0-smart-refresh';
+const ASSETS=['./','./index.html','./styles.css','./matrix-order.css','./lab-branch.css','./lab-three-columns.css','./lab-view.css','./smart-refresh.js','./app.js','./matrix-card-collapse.js','./schedule-era.js','./lab-branch-core.js','./lab-branch.js','./lab-three-columns-core.js','./lab-three-columns.js','./top3-data.js','./top3-live.json','./branch-archive-top3.json','./three-columns-archive-top3.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
+const NETWORK_FIRST=['/','/index.html','/smart-refresh.js','/app.js','/matrix-card-collapse.js','/schedule-era.js','/lab-branch-core.js','/lab-branch.js','/lab-three-columns-core.js','/lab-three-columns.js','/styles.css','/matrix-order.css','/lab-branch.css','/lab-three-columns.css','/lab-view.css','/top3-live.json','/branch-archive-top3.json','/three-columns-archive-top3.json'];
 
 self.addEventListener('install',e=>e.waitUntil(
   caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting())
@@ -13,7 +13,7 @@ self.addEventListener('fetch',e=>{
   const path=new URL(e.request.url).pathname;
   const networkFirst=NETWORK_FIRST.some(x=>path.endsWith(x));
   if(networkFirst){
-    e.respondWith(fetch(e.request,{cache:'no-store'}).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return resp}).catch(()=>caches.match(e.request)));
+    e.respondWith(fetch(e.request,{cache:'no-store'}).then(resp=>{if(resp.ok){const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy))}return resp}).catch(()=>caches.match(e.request)));
     return;
   }
   e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).then(resp=>{const copy=resp.clone();caches.open(CACHE).then(c=>c.put(e.request,copy));return resp})));
