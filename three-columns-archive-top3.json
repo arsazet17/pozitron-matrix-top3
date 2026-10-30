@@ -2,13 +2,41 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-10-30T22:02:46.146Z",
-  "latestHistoryDraw": 270258,
+  "updatedAt": "2026-10-30T22:32:41.767Z",
+  "latestHistoryDraw": 270259,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "270259|31.10.26|01:25",
+      "key": "270260|31.10.26|01:55",
       "status": "pending",
+      "savedAt": "2026-10-30T22:32:41.767Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 270260,
+        "date": "31.10.26",
+        "time": "01:55"
+      },
+      "current": {
+        "id": 270259,
+        "date": "31.10.26",
+        "time": "01:25",
+        "combo": [
+          0,
+          8,
+          3
+        ]
+      },
+      "repeat": null,
+      "vertical": null,
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "270259|31.10.26|01:25",
+      "status": "closed",
       "savedAt": "2026-10-30T22:02:46.146Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -76,9 +104,35 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 1,
+      "fact": {
+        "id": 270259,
+        "date": "31.10.26",
+        "time": "01:25",
+        "combo": [
+          0,
+          8,
+          3
+        ]
+      },
+      "closedAt": "2026-10-30T22:32:41.767Z",
+      "repeatEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "verticalEval": {
+        "hit": 1,
+        "result": "1/3",
+        "matched": [
+          8
+        ],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "1/3"
     },
     {
       "key": "270258|31.10.26|00:55",
