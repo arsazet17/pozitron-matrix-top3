@@ -2,13 +2,69 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-10-31T01:32:36.200Z",
-  "latestHistoryDraw": 270265,
+  "updatedAt": "2026-10-31T02:02:50.328Z",
+  "latestHistoryDraw": 270266,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "270266|31.10.26|04:55",
+      "key": "270267|31.10.26|05:25",
       "status": "pending",
+      "savedAt": "2026-10-31T02:02:50.328Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 270267,
+        "date": "31.10.26",
+        "time": "05:25"
+      },
+      "current": {
+        "id": 270266,
+        "date": "31.10.26",
+        "time": "04:55",
+        "combo": [
+          9,
+          3,
+          2
+        ]
+      },
+      "repeat": {
+        "kind": "repeat-add",
+        "label": "ПОВТОР +",
+        "prediction": [
+          9,
+          8,
+          1
+        ],
+        "previous": {
+          "id": 269528,
+          "date": "15.10.26",
+          "time": "15:55",
+          "combo": [
+            9,
+            3,
+            2
+          ]
+        },
+        "follower": {
+          "id": 269529,
+          "date": "15.10.26",
+          "time": "16:25",
+          "combo": [
+            0,
+            5,
+            9
+          ]
+        }
+      },
+      "vertical": null,
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "270266|31.10.26|04:55",
+      "status": "closed",
       "savedAt": "2026-10-31T01:32:36.200Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -58,9 +114,29 @@
         }
       },
       "vertical": null,
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 1,
+      "fact": {
+        "id": 270266,
+        "date": "31.10.26",
+        "time": "04:55",
+        "combo": [
+          9,
+          3,
+          2
+        ]
+      },
+      "closedAt": "2026-10-31T02:02:50.328Z",
+      "repeatEval": {
+        "hit": 1,
+        "result": "1/3",
+        "matched": [
+          9
+        ],
+        "positions": 1,
+        "familyHit": false
+      },
+      "verticalEval": null,
+      "bestResult": "1/3"
     },
     {
       "key": "270265|31.10.26|04:25",
