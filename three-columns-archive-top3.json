@@ -2,13 +2,186 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-11-11T20:03:01.537Z",
-  "latestHistoryDraw": 270829,
+  "updatedAt": "2026-11-11T21:03:07.625Z",
+  "latestHistoryDraw": 270831,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "270830|11.11.26|23:25",
+      "key": "270832|12.11.26|00:25",
       "status": "pending",
+      "savedAt": "2026-11-11T21:03:07.625Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 270832,
+        "date": "12.11.26",
+        "time": "00:25"
+      },
+      "current": {
+        "id": 270831,
+        "date": "11.11.26",
+        "time": "23:55",
+        "combo": [
+          1,
+          7,
+          4
+        ]
+      },
+      "repeat": {
+        "kind": "repeat-add",
+        "label": "ПОВТОР +",
+        "prediction": [
+          8,
+          9,
+          6
+        ],
+        "previous": {
+          "id": 269465,
+          "date": "14.10.26",
+          "time": "08:25",
+          "combo": [
+            1,
+            7,
+            4
+          ]
+        },
+        "follower": {
+          "id": 269466,
+          "date": "14.10.26",
+          "time": "08:55",
+          "combo": [
+            7,
+            2,
+            2
+          ]
+        }
+      },
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          4,
+          8,
+          6
+        ],
+        "source": {
+          "id": 270735,
+          "date": "09.11.26",
+          "time": "23:55",
+          "combo": [
+            7,
+            9,
+            8
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "270831|11.11.26|23:55",
+      "status": "closed",
+      "savedAt": null,
+      "closedAt": null,
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0 BACKFILL",
+      "serverFrozen": false,
+      "backfill": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 270831,
+        "date": "11.11.26",
+        "time": "23:55"
+      },
+      "current": {
+        "id": 270830,
+        "date": "11.11.26",
+        "time": "23:25",
+        "combo": [
+          9,
+          1,
+          7
+        ]
+      },
+      "repeat": {
+        "kind": "repeat-add",
+        "label": "ПОВТОР +",
+        "prediction": [
+          6,
+          0,
+          9
+        ],
+        "previous": {
+          "id": 267845,
+          "date": "10.09.26",
+          "time": "10:25",
+          "combo": [
+            9,
+            1,
+            7
+          ]
+        },
+        "follower": {
+          "id": 267846,
+          "date": "10.09.26",
+          "time": "10:55",
+          "combo": [
+            7,
+            9,
+            2
+          ]
+        }
+      },
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          9,
+          5,
+          8
+        ],
+        "source": {
+          "id": 270734,
+          "date": "09.11.26",
+          "time": "23:25",
+          "combo": [
+            0,
+            6,
+            9
+          ]
+        }
+      },
+      "fact": {
+        "id": 270831,
+        "date": "11.11.26",
+        "time": "23:55",
+        "combo": [
+          1,
+          7,
+          4
+        ]
+      },
+      "repeatEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestHit": 0,
+      "bestResult": "0/3"
+    },
+    {
+      "key": "270830|11.11.26|23:25",
+      "status": "closed",
       "savedAt": "2026-11-11T20:03:01.537Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -76,9 +249,33 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 0,
+      "fact": {
+        "id": 270830,
+        "date": "11.11.26",
+        "time": "23:25",
+        "combo": [
+          9,
+          1,
+          7
+        ]
+      },
+      "closedAt": "2026-11-11T21:03:07.625Z",
+      "repeatEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "0/3"
     },
     {
       "key": "270829|11.11.26|22:55",
