@@ -2,12 +2,121 @@
   "schema": 1,
   "method": "lab-branch-ds-v1",
   "storage": "github-main",
-  "updatedAt": "2026-11-11T01:32:45.786Z",
-  "latestHistoryDraw": 270792,
+  "updatedAt": "2026-11-11T02:02:51.019Z",
+  "latestHistoryDraw": 270793,
   "records": [
     {
-      "key": "270793|11.11.26|04:55",
+      "key": "270794|11.11.26|05:25",
       "status": "pending",
+      "savedAt": "2026-11-11T02:02:51.019Z",
+      "engine": "LAB BRANCH SERVER v1.8.0",
+      "serverFrozen": true,
+      "storage": "branch-archive-top3.json",
+      "target": {
+        "id": 270794,
+        "date": "11.11.26",
+        "time": "05:25"
+      },
+      "decision": "CONTINUE",
+      "streak": 1,
+      "branch": {
+        "d": 2,
+        "s": 1,
+        "score": 0.25352,
+        "rate": 0.22352,
+        "samples": 30
+      },
+      "source": {
+        "date": "09.11.26",
+        "time": "05:55",
+        "combo": [
+          7,
+          7,
+          8
+        ]
+      },
+      "prediction": [
+        7,
+        8
+      ],
+      "s0": {
+        "source": {
+          "date": "09.11.26",
+          "time": "05:25",
+          "combo": [
+            6,
+            9,
+            3
+          ]
+        },
+        "prediction": [
+          9,
+          6
+        ]
+      },
+      "extended": null,
+      "ranking": [
+        {
+          "d": 4,
+          "s": -1,
+          "score": 0.3012756485254263,
+          "rate": 0.27127564852542635,
+          "samples": 30
+        },
+        {
+          "d": 7,
+          "s": -2,
+          "score": 0.2854124807038382,
+          "rate": 0.24914979143455251,
+          "samples": 30
+        },
+        {
+          "d": 1,
+          "s": 2,
+          "score": 0.2823283034679763,
+          "rate": 0.2523283034679763,
+          "samples": 30
+        },
+        {
+          "d": 2,
+          "s": -1,
+          "score": 0.25813476564188675,
+          "rate": 0.22813476564188676,
+          "samples": 30
+        },
+        {
+          "d": 2,
+          "s": 1,
+          "score": 0.2535177918991959,
+          "rate": 0.22351779189919588,
+          "samples": 30
+        },
+        {
+          "d": 6,
+          "s": 1,
+          "score": 0.24819961976337837,
+          "rate": 0.21819961976337837,
+          "samples": 30
+        },
+        {
+          "d": 1,
+          "s": -1,
+          "score": 0.24627244767713177,
+          "rate": 0.21627244767713177,
+          "samples": 30
+        },
+        {
+          "d": 3,
+          "s": -1,
+          "score": 0.2406648985604506,
+          "rate": 0.1979231056240232,
+          "samples": 30
+        }
+      ]
+    },
+    {
+      "key": "270793|11.11.26|04:55",
+      "status": "closed",
       "savedAt": "2026-11-11T01:32:45.786Z",
       "engine": "LAB BRANCH SERVER v1.8.0",
       "serverFrozen": true,
@@ -112,7 +221,21 @@
           "rate": 0.20843599032880983,
           "samples": 30
         }
-      ]
+      ],
+      "fact": {
+        "id": 270793,
+        "date": "11.11.26",
+        "time": "04:55",
+        "combo": [
+          6,
+          2,
+          3
+        ]
+      },
+      "hit": 0,
+      "result": "0/2",
+      "matched": [],
+      "closedAt": "2026-11-11T02:02:51.019Z"
     },
     {
       "key": "270792|11.11.26|04:25",
