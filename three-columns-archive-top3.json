@@ -2,13 +2,59 @@
   "schema": 1,
   "method": "three-columns-repeat-plus-d2-v1",
   "storage": "github-main",
-  "updatedAt": "2026-11-12T02:02:56.402Z",
-  "latestHistoryDraw": 270841,
+  "updatedAt": "2026-11-12T02:32:50.200Z",
+  "latestHistoryDraw": 270842,
   "backfillLimit": 500,
   "records": [
     {
-      "key": "270842|12.11.26|05:25",
+      "key": "270843|12.11.26|05:55",
       "status": "pending",
+      "savedAt": "2026-11-12T02:32:50.200Z",
+      "engine": "LAB THREE COLUMNS SERVER v1.0.0",
+      "serverFrozen": true,
+      "storage": "three-columns-archive-top3.json",
+      "target": {
+        "id": 270843,
+        "date": "12.11.26",
+        "time": "05:55"
+      },
+      "current": {
+        "id": 270842,
+        "date": "12.11.26",
+        "time": "05:25",
+        "combo": [
+          5,
+          2,
+          1
+        ]
+      },
+      "repeat": null,
+      "vertical": {
+        "kind": "d2-sub",
+        "label": "ВЕРТИКАЛЬ D2 −",
+        "prediction": [
+          7,
+          3,
+          3
+        ],
+        "source": {
+          "id": 270746,
+          "date": "10.11.26",
+          "time": "05:25",
+          "combo": [
+            8,
+            9,
+            8
+          ]
+        }
+      },
+      "bestHit": null,
+      "fact": null,
+      "closedAt": null
+    },
+    {
+      "key": "270842|12.11.26|05:25",
+      "status": "closed",
       "savedAt": "2026-11-12T02:02:56.402Z",
       "engine": "LAB THREE COLUMNS SERVER v1.0.0",
       "serverFrozen": true,
@@ -76,9 +122,36 @@
           ]
         }
       },
-      "bestHit": null,
-      "fact": null,
-      "closedAt": null
+      "bestHit": 2,
+      "fact": {
+        "id": 270842,
+        "date": "12.11.26",
+        "time": "05:25",
+        "combo": [
+          5,
+          2,
+          1
+        ]
+      },
+      "closedAt": "2026-11-12T02:32:50.200Z",
+      "repeatEval": {
+        "hit": 2,
+        "result": "2/3",
+        "matched": [
+          1,
+          5
+        ],
+        "positions": 0,
+        "familyHit": false
+      },
+      "verticalEval": {
+        "hit": 0,
+        "result": "0/3",
+        "matched": [],
+        "positions": 0,
+        "familyHit": false
+      },
+      "bestResult": "2/3"
     },
     {
       "key": "270841|12.11.26|04:55",
