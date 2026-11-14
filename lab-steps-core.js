@@ -9,7 +9,7 @@
   if(typeof module==='object'&&module.exports)module.exports=api;
   else root.LabStepsCore=api;
 })(typeof self!=='undefined'?self:this,function(){
-  const VERSION='1.0.0';
+  const VERSION='1.0.1';
   const WINDOW=20;
   const KINDS=[{kind:'/',from:'c',to:'a'},{kind:'\\',from:'a',to:'c'}];
   const POS_NAME={a:'A',b:'B',c:'C'};
@@ -37,17 +37,18 @@
     const W=opts.window||WINDOW,events=[];
     for(let k=2;k<R.length;k++){
       for(const L of linesAt(R,k)){
-        let lag=null,lagAny=null,anyDigit=null;
+        let lag=null,lagAny=null,anyDigit=null,hitAt=null,anyAt=null;
+        const at=d=>({id:d.id,date:d.date,time:d.time,combo:combo(d)});
         for(let j=k+1;j<R.length;j++){
           if(R[j].id-R[j-1].id!==1)break;            // разрыв архива — дальше не считаем
-          if(lagAny==null&&isTriple(R[j])){lagAny=j-k;anyDigit=R[j].a}
-          if(isTriple(R[j],L.digit)){lag=j-k;break}
+          if(lagAny==null&&isTriple(R[j])){lagAny=j-k;anyDigit=R[j].a;anyAt=at(R[j])}
+          if(isTriple(R[j],L.digit)){lag=j-k;hitAt=at(R[j]);break}
           if(j-k>=Math.max(W,400))break;
         }
         const passed=R.length-1-k;
         events.push({...L,idx:k,id:R[k].id,date:R[k].date,time:R[k].time,
           path:[R[k-2],R[k-1],R[k]].map(d=>({id:d.id,date:d.date,time:d.time,combo:combo(d)})),
-          lag,lagAny,anyDigit,passed,
+          lag,lagAny,anyDigit,hitAt,anyAt,startId:R[k-2].id,passed,
           state:lag!=null&&lag<=W?'hit':(passed>=W?'miss':'watch')});
       }
     }
@@ -81,7 +82,7 @@
     const d=raw.map(([id,a,b,c])=>({id,date:'13.11.26',time:'',a,b,c}));
     const s=scan(d),e=s.events.find(x=>x.digit===2&&x.kind==='/');
     const f=forming(chrono([{id:1,a:0,b:0,c:5},{id:2,a:3,b:5,c:9}]));
-    const checks=[!!e,e&&e.lag===12,e&&e.state==='hit',f.length===1&&f[0].digit===5&&f[0].needPos==='A',linesAt(chrono([{id:1,a:4,b:0,c:0},{id:2,a:0,b:4,c:0},{id:4,a:0,b:0,c:4}]),2).length===0];
+    const checks=[!!e,e&&e.lag===12,e&&e.hitAt&&e.hitAt.id===270924&&e.startId===270910,e&&e.state==='hit',f.length===1&&f[0].digit===5&&f[0].needPos==='A',linesAt(chrono([{id:1,a:4,b:0,c:0},{id:2,a:0,b:4,c:0},{id:4,a:0,b:0,c:4}]),2).length===0];
     return {ok:checks.every(Boolean),checks};
   }
   return {VERSION,WINDOW,chrono,linesAt,scan,stats,active,forming,plan,selfTest};

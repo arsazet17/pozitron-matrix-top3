@@ -33,9 +33,18 @@
 .st-journal{display:grid;gap:8px;margin-top:10px}
 .st-row{border:1px solid #294b64;border-left:5px solid #687d91;border-radius:12px;padding:10px;background:#061626}
 .st-row.hit{border-left-color:#50b943}.st-row.miss{border-left-color:#e63b2e}.st-row.watch{border-left-color:#e0752f}
-.st-row-head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:13px}
-.st-row.hit .st-row-head span{color:#68db78}.st-row.miss .st-row-head span{color:#ff7166}.st-row.watch .st-row-head span{color:#ffb36b}
+.st-row-head{display:flex;flex-direction:column;gap:2px;font-size:13px}.st-row-head small{color:#8fa2b5;font-size:11px}
 .st-more{width:100%}
 .st-empty{color:#8fa2b5;padding:14px;text-align:center}
 .steps-alert{position:relative}
 .steps-alert::after{content:'';position:absolute;top:6px;right:calc(50% - 22px);width:11px;height:11px;border-radius:50%;background:#ff3b30;box-shadow:0 0 0 2px #06111f;animation:stPulse 1.6s ease-in-out infinite}
+.st-row-body{display:flex;gap:10px;align-items:flex-start}.st-row-body .st-path{flex:1;min-width:0}
+.st-res{flex:0 0 104px;border-radius:12px;padding:8px 6px;text-align:center;display:grid;gap:3px;margin-top:8px;border:1px solid #31506b;background:#0b1d30}
+.st-res small{font-size:10px;font-weight:900;letter-spacing:.03em;line-height:1.2}
+.st-res-combo{display:flex;justify-content:center;gap:3px}.st-res-combo i{font-style:normal;width:26px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:17px;color:#fff;background:#25445f}
+.st-res-when{font-size:11px;color:#c9d6e2;line-height:1.25}.st-res-when b{font-size:15px;color:#fff}
+.st-res-id{font-size:10px;color:#8fa2b5}.st-res-lag{font-size:12px;color:#e8eef5}.st-res-from{font-size:10px;color:#8fa2b5}
+.st-res.hit{border-color:#3f8f4e;background:#0b2c16}.st-res.hit small{color:#7ce889}.st-res.hit .st-res-combo i{background:#2f8f3e;border:1px solid #7ce889}
+.st-res.watch{border-color:#a8622b;background:#22160c}.st-res.watch small{color:#ffb36b}.st-res.watch .st-res-combo i{background:#b4471a}
+.st-res.any{border-color:#7a5a2b;background:#1d170d}.st-res.any small{color:#e6c07a}.st-res.any .st-res-combo i{background:#6e5422}
+.st-res.miss{border-color:#7a2f2a;background:#1d0e0d}.st-res.miss small{color:#ff7166}.st-res.miss .st-res-combo i{background:#3a2422;color:#a98d8a}

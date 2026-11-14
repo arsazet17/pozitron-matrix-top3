@@ -52,14 +52,21 @@
       <div>Через сколько приходила тройка: <b>${st.lags.join(', ')||'—'}</b></div>
     </div>`;
   }
+  const big=c=>`<div class="st-res-combo">${c.map(n=>`<i>${n}</i>`).join('')}</div>`;
+  function resultBox(e,W){
+    const t=[e.digit,e.digit,e.digit];
+    if(e.state==='hit'){const h=e.hitAt;return `<div class="st-res hit"><small>✅ ВЫШЛА</small>${big(h.combo)}<div class="st-res-when">${h.date}<br><b>${h.time}</b></div><div class="st-res-id">№${h.id}</div><div class="st-res-lag">через <b>${e.lag}</b> тир.</div><div class="st-res-from">от начала линии: ${e.lag+2}</div></div>`}
+    if(e.state==='watch')return `<div class="st-res watch"><small>⏳ ЖДЁМ</small>${big(t)}<div class="st-res-lag">прошло <b>${e.passed}</b> из ${W}</div></div>`;
+    if(e.anyAt&&e.lagAny<=W){const h=e.anyAt;return `<div class="st-res any"><small>✗ ${e.digit}-${e.digit}-${e.digit} не было · вышла другая</small>${big(h.combo)}<div class="st-res-when">${h.date}<br><b>${h.time}</b></div><div class="st-res-id">№${h.id}</div><div class="st-res-lag">через <b>${e.lagAny}</b> тир.</div></div>`}
+    return `<div class="st-res miss"><small>✗ НЕ БЫЛО</small>${big(t)}<div class="st-res-lag">за ${W} тиражей</div></div>`;
+  }
   function journalHtml(events,W){
     const list=events.slice().sort((a,b)=>b.id-a.id).slice(0,ui.rows);
     return list.map(e=>{
-      const res=e.state==='hit'?`✅ ${e.digit}-${e.digit}-${e.digit} через ${e.lag}`:e.state==='miss'?`✗ за ${W} не было${e.lagAny!=null&&e.lagAny<=W?` · любая тройка через ${e.lagAny}`:''}`:`⏳ ждём · прошло ${e.passed}`;
-      return `<div class="st-row ${e.state}"><div class="st-row-head"><b>${e.date} ${e.time} · линия «${e.kind}» из ${e.digit}</b><span>${res}</span></div>${pathHtml(e)}</div>`;
+      const p0=e.path[0],p2=e.path[2];
+      return `<div class="st-row ${e.state}"><div class="st-row-head"><b>${p0.date} ${p0.time}→${p2.time} · линия «${e.kind}» из ${e.digit}</b><small>захват: №${p0.id}–№${p2.id}</small></div><div class="st-row-body">${pathHtml(e)}${resultBox(e,W)}</div></div>`;
     }).join('')+(events.length>ui.rows?`<button id="stMore" class="secondary-btn st-more" type="button">Показать ещё</button>`:'');
   }
-
   function notify(p){
     const seen=readJson(SEEN_KEY,{});let changed=false;
     const fire=(tag,title,body)=>{
