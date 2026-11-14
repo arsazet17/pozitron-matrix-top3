@@ -12,6 +12,7 @@
   <link rel="stylesheet" href="lab-branch.css?v=1.8.0" />
   <link rel="stylesheet" href="lab-three-columns.css?v=1.0.0" />
   <link rel="stylesheet" href="lab-view.css?v=1.10.0" />
+  <link rel="stylesheet" href="lab-steps.css?v=1.11.1" />
 </head>
 <body>
   <div id="splash" class="splash">
@@ -20,7 +21,7 @@
     <div class="splash-sub">MATRIX TOP-3</div>
   </div>
   <main id="app" class="app hidden">
-    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.11.0 · LAB VIEW · АВТООБНОВЛЕНИЕ</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
+    <header class="topbar"><div class="brand"><img class="brand-logo" src="matrix-logo.png" alt="" /><div><h1>ПОЗИТРОН · МАТРИЦА ТОП-3</h1><div class="version">отдельное приложение · v1.11.1 · LAB VIEW · АВТООБНОВЛЕНИЕ</div><div class="statusline"><span id="updatedText">Обновлено: —</span> · <span>всего: <b id="totalCount">—</b></span></div></div></div><button id="refreshBtn" class="icon-btn" title="Обновить">↻</button></header>
     <nav class="tabs" aria-label="Разделы"><button class="tab active" data-tab="matrix">Матрица ТОП-3</button><button class="tab" data-tab="horizontal">Горизонталь ТОП-3</button><button class="tab" data-tab="lab">🧪 LAB MATRIX</button></nav>
     <section class="controls card">
       <div class="control-group matrix-order-control"><label>Порядок столбов</label><div id="columnOrderButtons" class="column-order-grid" aria-label="Порядок столбов Матрицы ТОП-3"><button type="button" class="column-order-btn" data-order="ABC">ABC</button><button type="button" class="column-order-btn" data-order="ACB">ACB</button><button type="button" class="column-order-btn" data-order="BAC">BAC</button><button type="button" class="column-order-btn" data-order="BCA">BCA</button><button type="button" class="column-order-btn" data-order="CAB">CAB</button><button type="button" class="column-order-btn" data-order="CBA">CBA</button></div><div id="columnOrderHint" class="column-order-hint">Нет выбора → ABC</div></div>
@@ -35,7 +36,10 @@
       </section>
 
       <section class="lab-modules">
-        <div class="lab-slot disabled" aria-disabled="true"><h3>🪜 Ступени</h3><p>Пока не подключено. Здесь будет отдельный модуль со своим движком и архивом.</p><span class="slot-badge">ПОКА НЕАКТИВНО</span></div>
+        <section id="stepsSlot" class="st-slot" aria-label="Ступени">
+          <div class="st-slot-head"><div><h3>🪜 Ступени</h3><p>линия одной цифры по диагонали (3 тиража) → сигнал: скоро тройка X-X-X</p></div><span id="stepsSelfTest" class="st-selftest">SELF-TEST…</span></div>
+          <div id="stepsForecast"><div class="st-empty">Загрузка модуля…</div></div>
+        </section>
         <section class="tc-slot" aria-label="Три столба">
           <div class="tc-slot-head"><div><h3>▥ Три столба</h3><p>повтор + следующий тираж · вертикаль D2 · отдельный архив</p></div><span id="threeColumnsSelfTest" class="tc-selftest">SELF-TEST…</span></div>
           <div id="threeColumnsForecast"><div class="tc-empty">Загрузка модуля…</div></div>
@@ -72,5 +76,7 @@
   <script src="lab-branch.js?v=1.11.0"></script>
   <script src="lab-three-columns-core.js?v=1.0.0"></script>
   <script src="lab-three-columns.js?v=1.11.0"></script>
+  <script src="lab-steps-core.js?v=1.11.1"></script>
+  <script src="lab-steps.js?v=1.11.1"></script>
 </body>
 </html>
