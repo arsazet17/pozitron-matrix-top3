@@ -1,4 +1,4 @@
-const CACHE='matrix-top3-v1.11.2-steps';
+const CACHE='matrix-top3-v1.11.3-steps';
 const ASSETS=['./','./index.html','./styles.css','./matrix-order.css','./lab-branch.css','./lab-three-columns.css','./lab-view.css','./smart-refresh.js','./app.js','./matrix-card-collapse.js','./schedule-era.js','./lab-branch-core.js','./lab-branch.js','./lab-three-columns-core.js','./lab-three-columns.js','./lab-steps-core.js','./lab-steps.js','./lab-steps.css','./top3-data.js','./top3-live.json','./branch-archive-top3.json','./three-columns-archive-top3.json','./matrix-logo.png','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 const NETWORK_FIRST=['/','/index.html','/smart-refresh.js','/app.js','/matrix-card-collapse.js','/schedule-era.js','/lab-branch-core.js','/lab-branch.js','/lab-three-columns-core.js','/lab-three-columns.js','/lab-steps-core.js','/lab-steps.js','/lab-steps.css','/styles.css','/matrix-order.css','/lab-branch.css','/lab-three-columns.css','/lab-view.css','/top3-live.json','/branch-archive-top3.json','/three-columns-archive-top3.json'];
 

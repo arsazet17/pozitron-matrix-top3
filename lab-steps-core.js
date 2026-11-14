@@ -9,8 +9,8 @@
   if(typeof module==='object'&&module.exports)module.exports=api;
   else root.LabStepsCore=api;
 })(typeof self!=='undefined'?self:this,function(){
-  const VERSION='1.0.1';
-  const WINDOW=20;
+  const VERSION='1.0.2';
+  const WINDOW=30;
   const KINDS=[{kind:'/',from:'c',to:'a'},{kind:'\\',from:'a',to:'c'}];
   const POS_NAME={a:'A',b:'B',c:'C'};
 

@@ -28,7 +28,7 @@
 
   function signalCard(e,st,p,R){
     const W=p.window,left=W-e.passed,step=stepMinutes(R);
-    const z=st.zone||[6,14];
+    const z=st.zone||[8,15];
     const inZone=e.passed+1>=z[0]&&e.passed+1<=z[1];
     const zoneFrom=Math.max(1,z[0]-e.passed),zoneTo=z[1]-e.passed;
     const zoneTxt=zoneTo>=1?`зона ${z[0]}–${z[1]} тиражей после линии → примерно <b>${timeAhead(p.latest,zoneFrom,step)}–${timeAhead(p.latest,zoneTo,step)}</b>`:'зона по архиву уже прошла, окно ещё открыто';
@@ -36,7 +36,7 @@
     return `<article class="st-signal ${inZone?'hot':''}">
       <div class="st-signal-top"><span class="st-flag">${inZone?'🔥 В ЗОНЕ':'⚠ СИГНАЛ'}</span><span class="st-left">осталось ${left} из ${W}</span></div>
       <div class="st-signal-main"><div><small>СКОРО ТРОЙКА</small><div class="st-big">${t.map(n=>`<i>${n}</i>`).join('')}</div></div>
-      <div class="st-signal-info"><div>линия «${e.kind}» из <b>${e.digit}</b> · ${e.date} ${e.time}</div><div>прошло <b>${e.passed}</b> тир. после линии</div><div>${zoneTxt}</div></div></div>
+      <div class="st-signal-info"><div>линия «${e.kind}» из <b>${e.digit}</b> · ${e.date} ${e.time}</div><div>прошло <b>${e.passed}</b> тир. после линии</div><div>${zoneTxt}</div>${e.anyAt?`<div>уже была другая тройка: <b>${e.anyAt.combo.join('-')}</b> в ${e.anyAt.time} (через ${e.lagAny})</div>`:''}</div></div>
       ${pathHtml(e)}
       <div class="st-progress"><div class="st-fill" style="width:${Math.min(100,e.passed/W*100)}%"></div><div class="st-zone" style="left:${(z[0]-1)/W*100}%;width:${(z[1]-z[0]+1)/W*100}%"></div></div>
     </article>`;
@@ -56,8 +56,9 @@
   function resultBox(e,W){
     const t=[e.digit,e.digit,e.digit];
     if(e.state==='hit'){const h=e.hitAt;return `<div class="st-res hit"><small>✅ ВЫШЛА</small>${big(h.combo)}<div class="st-res-when">${h.date}<br><b>${h.time}</b></div><div class="st-res-id">№${h.id}</div><div class="st-res-lag">через <b>${e.lag}</b> тир.</div><div class="st-res-from">от начала линии: ${e.lag+2}</div></div>`}
-    if(e.state==='watch')return `<div class="st-res watch"><small>⏳ ЖДЁМ</small>${big(t)}<div class="st-res-lag">прошло <b>${e.passed}</b> из ${W}</div></div>`;
-    if(e.anyAt&&e.lagAny<=W){const h=e.anyAt;return `<div class="st-res any"><small>✗ ${e.digit}-${e.digit}-${e.digit} не было · вышла другая</small>${big(h.combo)}<div class="st-res-when">${h.date}<br><b>${h.time}</b></div><div class="st-res-id">№${h.id}</div><div class="st-res-lag">через <b>${e.lagAny}</b> тир.</div></div>`}
+    const other=h=>`<div class="st-res-other">другая тройка: <b>${h.combo.join('-')}</b> · ${h.time} · через ${e.lagAny}</div>`;
+    if(e.state==='watch')return `<div class="st-res watch"><small>⏳ ЖДЁМ</small>${big(t)}<div class="st-res-lag">прошло <b>${e.passed}</b> из ${W}</div>${e.anyAt?other(e.anyAt):''}</div>`;
+    if(e.anyAt){const h=e.anyAt,late=e.lagAny>W;return `<div class="st-res any"><small>✗ ${e.digit}-${e.digit}-${e.digit} не было · вышла другая${late?` (после ${W})`:''}</small>${big(h.combo)}<div class="st-res-when">${h.date}<br><b>${h.time}</b></div><div class="st-res-id">№${h.id}</div><div class="st-res-lag">через <b>${e.lagAny}</b> тир.</div></div>`}
     return `<div class="st-res miss"><small>✗ НЕ БЫЛО</small>${big(t)}<div class="st-res-lag">за ${W} тиражей</div></div>`;
   }
   function journalHtml(events,W){
@@ -76,7 +77,7 @@
       if(navigator.serviceWorker&&navigator.serviceWorker.ready)navigator.serviceWorker.ready.then(r=>r.showNotification(title,opt)).catch(()=>{try{new Notification(title,opt)}catch(_){}});
       else{try{new Notification(title,opt)}catch(_){}}
     };
-    const z=p.stats.zone||[6,14];
+    const z=p.stats.zone||[8,15];
     p.active.forEach(e=>{
       fire(`line-${e.id}-${e.digit}`,`🪜 Ступени: линия из ${e.digit}`,`Ждём ${e.digit}-${e.digit}-${e.digit} в ближайшие ${p.window} тиражей`);
       if(e.passed+1>=z[0])fire(`zone-${e.id}-${e.digit}`,`🔥 Ступени: зона тройки ${e.digit}-${e.digit}-${e.digit}`,`Прошло ${e.passed} тиражей после линии — начинается зона по архиву`);
